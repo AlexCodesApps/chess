@@ -3,4 +3,3 @@ build
 main
 !.gitignore
 compile_commands.json
-assets
