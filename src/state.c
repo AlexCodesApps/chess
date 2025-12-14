@@ -204,12 +204,6 @@ StateUpdateResult state_update(State * state) {
 				SDL_Log("CHECKMATE");
 				return STATE_UPDATE_QUIT;
 			}
-			if (board_has_checks(&state->board, WHITE_SIDE)) {
-				SDL_Log("White king in check");
-			}
-			if (board_has_checks(&state->board, BLACK_SIDE)) {
-				SDL_Log("Black king in check");
-			}
 		}
 		state->held_piece_idx = INVALID_PIECE_IDX;
 	}
