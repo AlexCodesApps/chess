@@ -1,3 +1,0 @@
-from_idx is prone to corruption.
-There is a unexplained black queen side castling issue.
-There is a unexplained phantom capture bug when the capture isn't until the next move.

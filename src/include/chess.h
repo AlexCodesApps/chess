@@ -32,6 +32,7 @@ typedef struct {
 	u8 from;
 	u8 to;
 	u8 piece_idx;
+	u8 captured_idx;
 } BoardMoveResult;
 
 typedef struct {
@@ -145,10 +146,10 @@ static bool legal_board_moves_contains_idx(LegalBoardMoves moves, u8 idx) {
 
 u8 board_lookup_idx_idx(ChessBoard * board, u8 idx);
 
-bool check_board_for_checks(ChessBoard * board, ChessSide side);
+bool board_has_checks(ChessBoard * board, ChessSide side);
 
 /* INVARIANT: from != to */
-BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 from_idx, u8 to);
+BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 to);
 
 void board_unmake_move(ChessBoard * board, BoardMoveResult last_move);
 

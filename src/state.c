@@ -47,16 +47,21 @@ void promotion_dialog_init(PromotionDialog * dialog, const Rect2f * board_rect, 
 					dialog->rect.y + margin, slot_width, slot_width);
 }
 
-void gen_legal_board_moves_array(LegalBoardMoves moves[32], ChessBoard * board) {
+LegalBoardMoves gen_legal_board_moves_array(LegalBoardMoves moves[32], ChessBoard * board, ChessSide side) {
+	LegalBoardMoves composite_moves = 0;
 	for (u8 i = 0; i < board->piece_count; ++i) {
 		u8 idx = board->piece_idxs[i];
-		moves[i] = board_get_legal_moves_for_piece(board, idx, i);
+		if (board->slots[idx].side == side) {
+			LegalBoardMoves moves_ = board_get_legal_moves_for_piece(board, idx, i);
+			moves[i] = moves_;
+			composite_moves |= moves_;
+		}
 	}
+	return composite_moves;
 }
 
 void state_init(State * state, const Display * display) {
 	state->board = INITIAL_CHESS_BOARD;
-	gen_legal_board_moves_array(state->legal_moves, &state->board);
 	state->board_rect = get_board_dims(display);
 	state->slot_width = get_slot_width(&state->board_rect);
 	promotion_dialog_init(&state->promotion_dialog, &state->board_rect, state->slot_width);
@@ -65,8 +70,9 @@ void state_init(State * state, const Display * display) {
 	state->promoting = false;
 	state->mouse_is_down = false;
 	state->did_quit = false;
-	state->view = WHITE_SIDE;
+	state->view = BLACK_SIDE;
 	state->side = WHITE_SIDE;
+	gen_legal_board_moves_array(state->legal_moves, &state->board, state->side);
 	state->held_piece_idx = INVALID_PIECE_IDX;
 	state->promotion_dialog.pad = 1;
 	state->promotion_dialog.margin = 1;
@@ -127,7 +133,7 @@ void state_process_event(State * state, const Event * event) {
 		if (idx == INVALID_PIECE_IDX)
 			break;
 		BoardSlot * slot = &state->board.slots[idx];
-		if (!slot->has_piece)
+		if (!slot->has_piece || slot->side != state->side)
 			break;
 		for (u8 i = 0; i < state->board.piece_count; ++i) {
 			if (state->board.piece_idxs[i] == idx) {
@@ -172,7 +178,10 @@ StateUpdateResult state_update(State * state) {
 		}
 		state->promoting = false;
 		state->board.slots[state->held_piece_idx].piece = piece;
-		gen_legal_board_moves_array(state->legal_moves, &state->board);
+		if (!gen_legal_board_moves_array(state->legal_moves, &state->board, state->side)) {
+			SDL_Log("CHECKMATE");
+			return STATE_UPDATE_QUIT;
+		}
 		SDL_Log("Promoted to %s", chess_piece_str(piece));
 		state->held_piece_idx = INVALID_PIECE_IDX;
 		state->promotion_dialog.choice = PROMOTION_DIALOG_NONE;
@@ -184,18 +193,21 @@ StateUpdateResult state_update(State * state) {
 			&& legal_board_moves_contains_idx(state->legal_moves[state->held_piece_idx_idx], idx)) {
 			BoardMoveResult result =
 				board_make_move(&state->board,
-					state->held_piece_idx, state->held_piece_idx_idx, idx);
+					state->held_piece_idx, &state->held_piece_idx_idx, idx);
 			state->side ^= 1;
 			if (result.promotion) {
 				state->held_piece_idx = idx;
 				state->promoting = true;
 				return STATE_UPDATE_CONTINUE;
 			}
-			gen_legal_board_moves_array(state->legal_moves, &state->board);
-			if (check_board_for_checks(&state->board, WHITE_SIDE)) {
+			if (!gen_legal_board_moves_array(state->legal_moves, &state->board, state->side)) {
+				SDL_Log("CHECKMATE");
+				return STATE_UPDATE_QUIT;
+			}
+			if (board_has_checks(&state->board, WHITE_SIDE)) {
 				SDL_Log("White king in check");
 			}
-			if (check_board_for_checks(&state->board, BLACK_SIDE)) {
+			if (board_has_checks(&state->board, BLACK_SIDE)) {
 				SDL_Log("Black king in check");
 			}
 		}
@@ -206,7 +218,8 @@ StateUpdateResult state_update(State * state) {
 
 void state_draw(State * state, TextureCache * cache, Display * display) {
 	Texture * board_tx = texture_cache_lookup(cache, TEXTURE_ID_BOARD);
-	SDL_RenderTexture(display->renderer, board_tx, NULL, &state->board_rect);
+	SDL_FlipMode flip = state->view == WHITE_SIDE ? SDL_FLIP_HORIZONTAL : SDL_FLIP_VERTICAL;
+	SDL_RenderTextureRotated(display->renderer, board_tx, NULL, &state->board_rect, 0, NULL, flip);
 	for (int y = 0; y < 8; ++y) {
 		for (int x = 0; x < 8; ++x) {
 			int idx = y * 8 + x;
@@ -226,10 +239,10 @@ void state_draw(State * state, TextureCache * cache, Display * display) {
 		}
 	}
 	if (state->mouse_is_down && state->held_piece_idx != INVALID_PIECE_IDX && !state->promoting) {
-		LegalBoardMoves moves = board_get_legal_moves_for_piece(&state->board, state->held_piece_idx, state->held_piece_idx_idx);
+		LegalBoardMoves moves = state->legal_moves[state->held_piece_idx_idx];
 		u8 count = 0;
 		for (u64 i = 0; i < 64; ++i) {
-			if ((moves & ((u64)1 << i)) == 0)
+			if (!legal_board_moves_contains_idx(moves, i))
 				continue;
 			++count;
 			int rx = i % 8;

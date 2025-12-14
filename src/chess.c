@@ -66,14 +66,14 @@ static bool is_free_or_enemy_idx(ChessBoard * board, u8 idx, ChessSide side) {
 	return !board->slots[idx].has_piece || board->slots[idx].side != side;
 }
 
-BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 from_idx, u8 to) {
+BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 to) {
 	BoardMoveResult result = {
 		.from = from,
 		.to = to,
-		.piece_idx = from_idx,
+		.piece_idx = *from_idx,
 	};
 	u8 to_idx = board_lookup_idx_idx(board, to);
-	if (from_idx == WHITE_KING_IDX_IDX && from == INITIAL_WHITE_KING_IDX) {
+	if (*from_idx == WHITE_KING_IDX_IDX && from == INITIAL_WHITE_KING_IDX) {
 		if (to == WHITE_KING_SIDE_CASTLE_IDX) {
 			u8 new_rook_idx = WHITE_KING_SIDE_CASTLE_IDX + 1;
 			board->piece_idxs[INITIAL_WHITE_KING_SIDE_ROOK_IDX_IDX] = new_rook_idx;
@@ -93,7 +93,7 @@ BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 from_idx, u8 to)
 			board->white_queen_side_castle_ok = false;
 			result.cancelled_castle_queen = true;
 		}
-	} else if (from_idx == BLACK_KING_IDX_IDX && from == INITIAL_BLACK_KING_IDX) {
+	} else if (*from_idx == BLACK_KING_IDX_IDX && from == INITIAL_BLACK_KING_IDX) {
 		if (to == BLACK_KING_SIDE_CASTLE_IDX) {
 			u8 new_rook_idx = BLACK_KING_SIDE_CASTLE_IDX + 1;
 			board->piece_idxs[INITIAL_BLACK_KING_SIDE_ROOK_IDX_IDX] = new_rook_idx;
@@ -113,32 +113,32 @@ BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 from_idx, u8 to)
 			board->black_queen_side_castle_ok = false;
 			result.cancelled_castle_queen = true;
 		}
-	} else if (board->white_king_side_castle_ok && from_idx == INITIAL_WHITE_KING_SIDE_ROOK_IDX_IDX) {
+	} else if (board->white_king_side_castle_ok && *from_idx == INITIAL_WHITE_KING_SIDE_ROOK_IDX_IDX) {
 		board->white_king_side_castle_ok = false;
 		result.cancelled_castle_king = true;
-	} else if (board->white_queen_side_castle_ok && from_idx == INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX_IDX) {
+	} else if (board->white_queen_side_castle_ok && *from_idx == INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX_IDX) {
 		board->white_queen_side_castle_ok = false;
 		result.cancelled_castle_queen = true;
-	} else if (board->black_king_side_castle_ok && from_idx == INITIAL_BLACK_KING_SIDE_ROOK_IDX_IDX) {
+	} else if (board->black_king_side_castle_ok && *from_idx == INITIAL_BLACK_KING_SIDE_ROOK_IDX_IDX) {
 		board->black_king_side_castle_ok = false;
 		result.cancelled_castle_king = true;
-	} else if (board->black_queen_side_castle_ok && from_idx == INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX_IDX) {
+	} else if (board->black_queen_side_castle_ok && *from_idx == INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX_IDX) {
 		board->black_queen_side_castle_ok = false;
 		result.cancelled_castle_queen = true;
 	}
-	board->piece_idxs[from_idx] = to;
+	board->piece_idxs[*from_idx] = to;
 	if (to_idx != INVALID_PIECE_IDX) {
 		result.capture = true;
 		result.piece = board->slots[to].piece;
+		result.captured_idx = to_idx;
 		board->piece_idxs[to_idx] = board->piece_idxs[--board->piece_count];
+		if (board->piece_count == *from_idx) {
+			*from_idx = to_idx;
+		}
 	}
 	transfer_to_slot(board, from, to);
 	if (is_promoting_pawn_at_idx(board, to)) {
-		SDL_Log("Pawn for promotion");
 		result.promotion = true;
-	}
-	if (result.capture) {
-		SDL_Log("Destroyed piece [%s]", chess_piece_str(result.piece));
 	}
 	return result;
 }
@@ -147,7 +147,6 @@ void board_unmake_move(ChessBoard * board, BoardMoveResult last_move) {
 	BoardSlot * from_slot = &board->slots[last_move.from];
 	BoardSlot * to_slot = &board->slots[last_move.to];
 	*from_slot = *to_slot;
-	board->piece_idxs[last_move.piece_idx] = last_move.from;
 	if (last_move.capture) {
 		ChessSide side = from_slot->side == WHITE_SIDE ? BLACK_SIDE : WHITE_SIDE;
 		*to_slot = (BoardSlot){
@@ -155,10 +154,12 @@ void board_unmake_move(ChessBoard * board, BoardMoveResult last_move) {
 			.has_piece = true,
 			.piece = last_move.piece,
 		};
-		board->piece_idxs[board->piece_count++] = last_move.to;
+		board->piece_idxs[last_move.captured_idx] = last_move.to;
+		++board->piece_count;
 	} else {
 		*to_slot = EMPTY_SLOT;
 	}
+	board->piece_idxs[last_move.piece_idx] = last_move.from;
 	if (last_move.promotion) {
 		from_slot->piece = CHESS_PAWN;
 	}
@@ -201,9 +202,6 @@ static bool king_in_bishop_LOS(const ChessBoard * const board, const Vec2i * kpo
 		int y = i * getsigni(dpos->y) + kpos->y;
 		u8 path_idx = rel_pos_to_idx(vec2i_new(x, y), side);
 		if (board->slots[path_idx].has_piece) {
-			SDL_Log("bishop view blocked by %s %s",
-				board->slots[path_idx].side == WHITE_SIDE ? "White" : "Black",
-				chess_piece_str(board->slots[path_idx].piece));
 			return false;
 		}
 	}
@@ -217,9 +215,6 @@ static bool king_in_rook_LOS(const ChessBoard * const board, const Vec2i * kpos,
 			int y = i * getsigni(dpos->y) + kpos->y;
 			u8 path_idx = rel_pos_to_idx(vec2i_new(x, y), side);
 			if (board->slots[path_idx].has_piece) {
-				SDL_Log("rook view blocked by %s %s",
-					board->slots[path_idx].side == WHITE_SIDE ? "White" : "Black",
-					chess_piece_str(board->slots[path_idx].piece));
 				return false;
 			}
 		}
@@ -242,7 +237,7 @@ static bool king_in_rook_LOS(const ChessBoard * const board, const Vec2i * kpos,
 	return false;
 }
 
-bool check_board_for_checks(ChessBoard * const board, ChessSide const side) {
+bool board_has_checks(ChessBoard * const board, ChessSide const side) {
 	const u8 idx_idx = side == WHITE_SIDE ? WHITE_KING_IDX_IDX : BLACK_KING_IDX_IDX;
 	const u8 idx = board->piece_idxs[idx_idx];
 	const Vec2i kpos = idx_to_rel_pos(idx, side);
@@ -292,8 +287,9 @@ no_check:
 }
 
 static void try_add_move(ChessBoard * board, LegalBoardMoves * moves, u8 from, u8 from_idx, u8 to, ChessSide side) {
-	BoardMoveResult move = board_make_move(board, from, from_idx, to);
-	bool king_in_danger = check_board_for_checks(board, side);
+	u8 from_idx_cpy = from_idx;
+	BoardMoveResult move = board_make_move(board, from, &from_idx_cpy, to);
+	bool king_in_danger = board_has_checks(board, side);
 	board_unmake_move(board, move);
 	if (!king_in_danger) {
 		legal_board_moves_add_index(moves, to);
@@ -448,6 +444,40 @@ LegalBoardMoves queen_moves(ChessBoard * board, u8 from, u8 from_idx) {
 	return bishop_moves(board, from, from_idx) | rook_moves(board, from, from_idx);
 }
 
+LegalBoardMoves king_castle_moves(ChessBoard * board, u8 from, u8 from_idx, ChessSide side) {
+	LegalBoardMoves moves = 0;
+	if (side == WHITE_SIDE) {
+		if (board->white_king_side_castle_ok
+			&& is_free_idx(board, INITIAL_WHITE_KING_SIDE_ROOK_IDX + 1)
+			&& is_free_idx(board, INITIAL_WHITE_KING_SIDE_ROOK_IDX + 2)
+			&& !board_has_checks(board, side)) {
+			try_add_move(board, &moves, from, from_idx, WHITE_KING_SIDE_CASTLE_IDX, side);
+		}
+		if (board->white_queen_side_castle_ok
+			&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 1)
+			&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 2)
+			&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 3)
+			&& !board_has_checks(board, side)) {
+			try_add_move(board, &moves, from, from_idx, WHITE_QUEEN_SIDE_CASTLE_IDX, side);
+		}
+	} else {
+		if (board->black_king_side_castle_ok
+			&& is_free_idx(board, INITIAL_BLACK_KING_SIDE_ROOK_IDX + 1)
+			&& is_free_idx(board, INITIAL_BLACK_KING_SIDE_ROOK_IDX + 2)
+			&& !board_has_checks(board, side)) {
+			try_add_move(board, &moves, from, from_idx, BLACK_KING_SIDE_CASTLE_IDX, side);
+		}
+		if (board->black_queen_side_castle_ok
+			&& is_free_idx(board, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX - 1)
+			&& is_free_idx(board, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX - 2)
+			&& is_free_idx(board, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX - 3)
+			&& !board_has_checks(board, side)) {
+			try_add_move(board, &moves, from, from_idx, BLACK_QUEEN_SIDE_CASTLE_IDX, side);
+		}
+	}
+	return moves;
+}
+
 LegalBoardMoves king_moves(ChessBoard * board, u8 from, u8 from_idx) {
 	LegalBoardMoves moves = 0;
 	ChessSide side = board->slots[from].side;
@@ -461,31 +491,7 @@ LegalBoardMoves king_moves(ChessBoard * board, u8 from, u8 from_idx) {
 			try_add_move(board, &moves, from, from_idx, to, side);
 		}
 	}
-	if (side == WHITE_SIDE) {
-		if (board->white_king_side_castle_ok
-			&& is_free_idx(board, INITIAL_WHITE_KING_SIDE_ROOK_IDX + 1)
-			&& is_free_idx(board, INITIAL_WHITE_KING_SIDE_ROOK_IDX + 2)) {
-			try_add_move(board, &moves, from, from_idx, WHITE_KING_SIDE_CASTLE_IDX, side);
-		}
-		if (board->white_queen_side_castle_ok
-			&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 1)
-			&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 2)
-			&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 3)) {
-			try_add_move(board, &moves, from, from_idx, WHITE_QUEEN_SIDE_CASTLE_IDX, side);
-		}
-	} else {
-		if (board->black_king_side_castle_ok
-			&& is_free_idx(board, INITIAL_BLACK_KING_SIDE_ROOK_IDX + 1)
-			&& is_free_idx(board, INITIAL_BLACK_KING_SIDE_ROOK_IDX + 2)) {
-			try_add_move(board, &moves, from, from_idx, BLACK_KING_SIDE_CASTLE_IDX, side);
-		}
-		if (board->black_queen_side_castle_ok
-			&& is_free_idx(board, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX - 1)
-			&& is_free_idx(board, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX - 2)
-			&& is_free_idx(board, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX - 3)) {
-			try_add_move(board, &moves, from, from_idx, BLACK_QUEEN_SIDE_CASTLE_IDX, side);
-		}
-	}
+	moves |= king_castle_moves(board, from, from_idx, side);
 	return moves;
 }
 
