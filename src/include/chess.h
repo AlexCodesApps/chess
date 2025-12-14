@@ -2,6 +2,8 @@
 #include "ints.h"
 #include "linalg.h"
 
+#define INVALID_PIECE_IDX ((u8)255)
+
 typedef enum : u8 {
 	CHESS_PAWN,
 	CHESS_KNIGHT,
@@ -26,19 +28,23 @@ typedef struct {
 	bool capture : 1;
 	bool castle : 1;
 	bool promotion : 1;
+	bool en_passant : 1; /* offsets the piece restoration slot when unmaking move */
 	bool cancelled_castle_queen : 1;
 	bool cancelled_castle_king : 1;
 	ChessPiece piece : 3;
 	u8 from;
 	u8 to;
 	u8 piece_idx;
+	u8 captured;
 	u8 captured_idx;
+	u8 last_opt_pawn;
 } BoardMoveResult;
 
 typedef struct {
 	BoardSlot slots[64];
 	u8 piece_idxs[32];
 	u8 piece_count;
+	u8 opt_pawn;
 	/* determines whether the possibility of castling is still there */
 	bool white_queen_side_castle_ok : 1;
 	bool white_king_side_castle_ok : 1;
@@ -80,6 +86,7 @@ static const ChessBoard INITIAL_CHESS_BOARD = {
 		56, 57, 58, 59, 60, 61, 62, 63
 	},
 	.piece_count = 32,
+	.opt_pawn = INVALID_PIECE_IDX,
 	.white_queen_side_castle_ok = true,
 	.white_king_side_castle_ok = true,
 	.black_queen_side_castle_ok = true,
@@ -156,7 +163,5 @@ void board_unmake_move(ChessBoard * board, BoardMoveResult last_move);
 /* INVARIANT: Index must be to actual piece */
 /* INVARIANT: Kings should never be capturable or corruption of state occurs */
 LegalBoardMoves board_get_legal_moves_for_piece(ChessBoard * board, u8 piece_idx, u8 piece_idx_idx);
-
-#define INVALID_PIECE_IDX ((u8)255)
 
 const char * chess_piece_str(ChessPiece piece);

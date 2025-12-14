@@ -66,13 +66,23 @@ static bool is_free_or_enemy_idx(ChessBoard * board, u8 idx, ChessSide side) {
 	return !board->slots[idx].has_piece || board->slots[idx].side != side;
 }
 
+/* INVARIANT: from is a CHESS_PAWN */
+static bool is_pawn_enpassant_move(ChessBoard * board, u8 from, u8 to) {
+	int diff = absi((int)from - (int)to);
+	return diff != 16 && diff != 8 && !board->slots[to].has_piece;
+}
+
 BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 to) {
 	BoardMoveResult result = {
 		.from = from,
 		.to = to,
 		.piece_idx = *from_idx,
+		.last_opt_pawn = board->opt_pawn,
+		.captured = to,
 	};
+	board->opt_pawn = INVALID_PIECE_IDX;
 	u8 to_idx = board_lookup_idx_idx(board, to);
+	u8 captured_idx = to_idx;
 	if (*from_idx == WHITE_KING_IDX_IDX && from == INITIAL_WHITE_KING_IDX) {
 		if (to == WHITE_KING_SIDE_CASTLE_IDX) {
 			u8 new_rook_idx = WHITE_KING_SIDE_CASTLE_IDX + 1;
@@ -125,13 +135,27 @@ BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 t
 	} else if (board->black_queen_side_castle_ok && *from_idx == INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX_IDX) {
 		board->black_queen_side_castle_ok = false;
 		result.cancelled_castle_queen = true;
+	} else if (board->slots[from].piece == CHESS_PAWN) {
+		if (is_pawn_enpassant_move(board, from, to)) {
+			result.en_passant = true;
+			ChessSide side = board->slots[from].side;
+			Vec2i to_pos = idx_to_rel_pos(to, side);
+			to_pos.y -= 1;
+			u8 acc_idx = rel_pos_to_idx(to_pos, side);
+			captured_idx = board_lookup_idx_idx(board, acc_idx);
+			SDL_assert(captured_idx != INVALID_PIECE_IDX);
+			board->slots[acc_idx] = EMPTY_SLOT;
+			result.captured = acc_idx;
+		} else if (absi(from - to) == 16) {
+			board->opt_pawn = to;
+		}
 	}
 	board->piece_idxs[*from_idx] = to;
-	if (to_idx != INVALID_PIECE_IDX) {
+	if (captured_idx != INVALID_PIECE_IDX) {
 		result.capture = true;
 		result.piece = board->slots[to].piece;
-		result.captured_idx = to_idx;
-		board->piece_idxs[to_idx] = board->piece_idxs[--board->piece_count];
+		result.captured_idx = captured_idx;
+		board->piece_idxs[captured_idx] = board->piece_idxs[--board->piece_count];
 		if (board->piece_count == *from_idx) {
 			*from_idx = to_idx;
 		}
@@ -144,20 +168,21 @@ BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 t
 }
 
 void board_unmake_move(ChessBoard * board, BoardMoveResult last_move) {
+	board->opt_pawn = last_move.last_opt_pawn;
 	BoardSlot * from_slot = &board->slots[last_move.from];
 	BoardSlot * to_slot = &board->slots[last_move.to];
 	*from_slot = *to_slot;
+	*to_slot = EMPTY_SLOT;
 	if (last_move.capture) {
+		BoardSlot * captured_slot = &board->slots[last_move.captured];
 		ChessSide side = from_slot->side == WHITE_SIDE ? BLACK_SIDE : WHITE_SIDE;
-		*to_slot = (BoardSlot){
+		*captured_slot = (BoardSlot){
 			.side = side,
 			.has_piece = true,
 			.piece = last_move.piece,
 		};
-		board->piece_idxs[last_move.captured_idx] = last_move.to;
+		board->piece_idxs[last_move.captured_idx] = last_move.captured;
 		++board->piece_count;
-	} else {
-		*to_slot = EMPTY_SLOT;
 	}
 	board->piece_idxs[last_move.piece_idx] = last_move.from;
 	if (last_move.promotion) {
@@ -226,9 +251,6 @@ static bool king_in_rook_LOS(const ChessBoard * const board, const Vec2i * kpos,
 			int x = i * getsigni(dpos->x) + kpos->x;
 			u8 path_idx = rel_pos_to_idx(vec2i_new(x, y), side);
 			if (board->slots[path_idx].has_piece) {
-				SDL_Log("rook blocked by %s %s",
-					board->slots[path_idx].side == WHITE_SIDE ? "White" : "Black",
-					chess_piece_str(board->slots[path_idx].piece));
 				return false;
 			}
 		}
@@ -312,11 +334,17 @@ LegalBoardMoves pawn_moves(ChessBoard * board, u8 from, u8 from_idx) {
 				}
 			}
 		}
-		if (to % 8 != 0 && is_enemy_idx(board, to - 1, side)) {
-			try_add_move(board, &moves, from, from_idx, to - 1, side);
+		if (to % 8 != 0) {
+			u8 ep_idx = rel_pos_to_idx(rel_pos, side) - 1;
+			if (ep_idx == board->opt_pawn || is_enemy_idx(board, to - 1, side)) {
+				try_add_move(board, &moves, from, from_idx, to - 1, side);
+			}
 		}
-		if (to % 8 != 7 && is_enemy_idx(board, to + 1, side)) {
-			try_add_move(board, &moves, from, from_idx, to + 1, side);
+		if (to % 8 != 7) {
+			u8 ep_idx = rel_pos_to_idx(rel_pos, side) + 1;
+			if (ep_idx == board->opt_pawn || is_enemy_idx(board, to + 1, side)) {
+				try_add_move(board, &moves, from, from_idx, to + 1, side);
+			}
 		}
 	}
 	return moves;
