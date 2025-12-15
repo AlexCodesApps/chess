@@ -22,6 +22,7 @@ int main(int argc, char ** argv) {
 		return 1;
 	}
 	SDL_Log("Loaded all textures");
+	SDL_Event event;
 	State state;
 	state_init(&state, &display);
 	bool running = true;
@@ -59,10 +60,8 @@ int main(int argc, char ** argv) {
 			break;
 		}
 		state_draw(&state, &cache, &display);
-
 		display_flip(&display);
 	}
-	
 	texture_cache_free(&cache);
 	SDL_Log("Freed textures");
 	display_close(&display);

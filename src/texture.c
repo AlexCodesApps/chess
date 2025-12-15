@@ -37,10 +37,17 @@ const char * texture_id_to_asset_path(TextureId id) {
 }
 
 bool texture_cache_init(TextureCache * cache, Renderer * renderer) {
+	const char * base = SDL_GetBasePath();
 	int i;
 	for (i = 0; i < TEXTURE_ID_COUNT; ++i) {
-		const char * path = texture_id_to_asset_path((TextureId)i);
+		const char * rel_path = texture_id_to_asset_path((TextureId)i);
+		char * path;
+		if (SDL_asprintf(&path, "%s/%s", base, rel_path) < 0) {
+			SDL_Log("couldn't allocate memory for path '%s/%s'", base, rel_path);
+			goto error;
+		}
 		Texture * tx = IMG_LoadTexture(renderer, path);
+		SDL_free(path);
 		if (!tx)
 			goto error;
 		if (!SDL_SetTextureScaleMode(tx, SDL_SCALEMODE_NEAREST)) {

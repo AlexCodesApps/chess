@@ -70,7 +70,7 @@ void state_init(State * state, const Display * display) {
 	state->promoting = false;
 	state->mouse_is_down = false;
 	state->did_quit = false;
-	state->view = BLACK_SIDE;
+	state->view = WHITE_SIDE;
 	state->side = WHITE_SIDE;
 	gen_legal_board_moves_array(state->legal_moves, &state->board, state->side);
 	state->held_piece_idx = INVALID_PIECE_IDX;

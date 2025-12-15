@@ -158,6 +158,8 @@ bool board_has_checks(ChessBoard * board, ChessSide side);
 /* INVARIANT: from != to */
 BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 to);
 
+void board_set_promotion_type(ChessBoard * board, ChessPiece piece);
+
 void board_unmake_move(ChessBoard * board, BoardMoveResult last_move);
 
 /* INVARIANT: Index must be to actual piece */
