@@ -48,7 +48,6 @@ typedef struct {
 	u8 held_piece_idx; /* has value when mouse isn't down which indicates the mouse was just released */
 	u8 held_piece_idx_idx; /* access when mouse is down and not promoting */
 	ChessSide view : 1;
-	ChessSide side : 1;
 	bool promoting : 1; /* turned off when promoting piece is specified */
 	bool mouse_is_down : 1;
 	bool did_quit : 1;

@@ -47,11 +47,11 @@ void promotion_dialog_init(PromotionDialog * dialog, const Rect2f * board_rect, 
 					dialog->rect.y + margin, slot_width, slot_width);
 }
 
-LegalBoardMoves gen_legal_board_moves_array(LegalBoardMoves moves[32], ChessBoard * board, ChessSide side) {
+LegalBoardMoves gen_legal_board_moves_array(LegalBoardMoves moves[32], ChessBoard * board) {
 	LegalBoardMoves composite_moves = 0;
 	for (u8 i = 0; i < board->piece_count; ++i) {
 		u8 idx = board->piece_idxs[i];
-		if (board->slots[idx].side == side) {
+		if (board->slots[idx].side == board->side) {
 			LegalBoardMoves moves_ = board_get_legal_moves_for_piece(board, idx, i);
 			moves[i] = moves_;
 			composite_moves |= moves_;
@@ -71,8 +71,7 @@ void state_init(State * state, const Display * display) {
 	state->mouse_is_down = false;
 	state->did_quit = false;
 	state->view = WHITE_SIDE;
-	state->side = WHITE_SIDE;
-	gen_legal_board_moves_array(state->legal_moves, &state->board, state->side);
+	gen_legal_board_moves_array(state->legal_moves, &state->board);
 	state->held_piece_idx = INVALID_PIECE_IDX;
 	state->promotion_dialog.pad = 1;
 	state->promotion_dialog.margin = 1;
@@ -133,7 +132,7 @@ void state_process_event(State * state, const Event * event) {
 		if (idx == INVALID_PIECE_IDX)
 			break;
 		BoardSlot * slot = &state->board.slots[idx];
-		if (!slot->has_piece || slot->side != state->side)
+		if (!slot->has_piece || slot->side != state->board.side)
 			break;
 		for (u8 i = 0; i < state->board.piece_count; ++i) {
 			if (state->board.piece_idxs[i] == idx) {
@@ -178,7 +177,7 @@ StateUpdateResult state_update(State * state) {
 		}
 		state->promoting = false;
 		state->board.slots[state->held_piece_idx].piece = piece;
-		if (!gen_legal_board_moves_array(state->legal_moves, &state->board, state->side)) {
+		if (!gen_legal_board_moves_array(state->legal_moves, &state->board)) {
 			SDL_Log("CHECKMATE");
 			return STATE_UPDATE_QUIT;
 		}
@@ -194,13 +193,12 @@ StateUpdateResult state_update(State * state) {
 			BoardMoveResult result =
 				board_make_move(&state->board,
 					state->held_piece_idx, &state->held_piece_idx_idx, idx);
-			state->side ^= 1;
 			if (result.promotion) {
 				state->held_piece_idx = idx;
 				state->promoting = true;
 				return STATE_UPDATE_CONTINUE;
 			}
-			if (!gen_legal_board_moves_array(state->legal_moves, &state->board, state->side)) {
+			if (!gen_legal_board_moves_array(state->legal_moves, &state->board)) {
 				SDL_Log("CHECKMATE");
 				return STATE_UPDATE_QUIT;
 			}

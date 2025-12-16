@@ -72,7 +72,7 @@ static bool is_pawn_enpassant_move(ChessBoard * board, u8 from, u8 to) {
 	return diff != 16 && diff != 8 && !board->slots[to].has_piece;
 }
 
-BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 to) {
+BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 * from_idx, u8 to) {
 	BoardMoveResult result = {
 		.from = from,
 		.to = to,
@@ -138,7 +138,7 @@ BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 t
 	} else if (board->slots[from].piece == CHESS_PAWN) {
 		if (is_pawn_enpassant_move(board, from, to)) {
 			result.en_passant = true;
-			ChessSide side = board->slots[from].side;
+			ChessSide side = board->side;
 			Vec2i to_pos = idx_to_rel_pos(to, side);
 			to_pos.y -= 1;
 			u8 acc_idx = rel_pos_to_idx(to_pos, side);
@@ -167,7 +167,19 @@ BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 t
 	return result;
 }
 
-void board_unmake_move(ChessBoard * board, BoardMoveResult last_move) {
+BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 to) {
+	BoardMoveResult result = board_make_move_internal(board, from, from_idx, to);
+	if (board->side == BLACK_SIDE)
+		++board->turn_count;
+	if (result.capture)
+		board->fifty_mv_rule = 0;
+	else
+		++board->fifty_mv_rule;
+	board->side ^= 1;
+	return result;
+}
+
+void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_move) {
 	board->opt_pawn = last_move.last_opt_pawn;
 	BoardSlot * from_slot = &board->slots[last_move.from];
 	BoardSlot * to_slot = &board->slots[last_move.to];
@@ -310,9 +322,9 @@ no_check:
 
 static void try_add_move(ChessBoard * board, LegalBoardMoves * moves, u8 from, u8 from_idx, u8 to, ChessSide side) {
 	u8 from_idx_cpy = from_idx;
-	BoardMoveResult move = board_make_move(board, from, &from_idx_cpy, to);
+	BoardMoveResult move = board_make_move_internal(board, from, &from_idx_cpy, to);
 	bool king_in_danger = board_has_checks(board, side);
-	board_unmake_move(board, move);
+	board_unmake_move_internal(board, move);
 	if (!king_in_danger) {
 		legal_board_moves_add_index(moves, to);
 	}

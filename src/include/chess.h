@@ -43,9 +43,12 @@ typedef struct {
 typedef struct {
 	BoardSlot slots[64];
 	u8 piece_idxs[32];
+	usize fifty_mv_rule;
+	usize turn_count;
 	u8 piece_count;
 	u8 opt_pawn;
 	/* determines whether the possibility of castling is still there */
+	ChessSide side : 1;
 	bool white_queen_side_castle_ok : 1;
 	bool white_king_side_castle_ok : 1;
 	bool black_queen_side_castle_ok : 1;
@@ -85,8 +88,11 @@ static const ChessBoard INITIAL_CHESS_BOARD = {
 		48, 49, 50, 51, 52, 53, 54, 55,
 		56, 57, 58, 59, 60, 61, 62, 63
 	},
+	.turn_count = 1,
+	.fifty_mv_rule = 0,
 	.piece_count = 32,
 	.opt_pawn = INVALID_PIECE_IDX,
+	.side = WHITE_SIDE,
 	.white_queen_side_castle_ok = true,
 	.white_king_side_castle_ok = true,
 	.black_queen_side_castle_ok = true,
@@ -156,11 +162,13 @@ u8 board_lookup_idx_idx(ChessBoard * board, u8 idx);
 bool board_has_checks(ChessBoard * board, ChessSide side);
 
 /* INVARIANT: from != to */
+BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 * from_idx, u8 to);
+/* INVARIANT: from != to */
 BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 to);
 
 void board_set_promotion_type(ChessBoard * board, ChessPiece piece);
 
-void board_unmake_move(ChessBoard * board, BoardMoveResult last_move);
+void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_move);
 
 /* INVARIANT: Index must be to actual piece */
 /* INVARIANT: Kings should never be capturable or corruption of state occurs */

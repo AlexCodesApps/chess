@@ -1,0 +1,5 @@
+Some weird bug was caught
+
+position fen r1b3kr/pp1n1ppp/2pRn3/8/8/2N1B3/PPP2PPP/2K2B1R b kq - 0 16
+Chess bot: bestmove g8g8 ponder f1e2
+position fen r1b4r/pp1n1ppp/2pRn3/8/8/2N1B3/PPP2PPP/2K2B1R w kq - 0 17
