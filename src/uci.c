@@ -331,14 +331,14 @@ bool fen_encode_board(StrBuilder * builder, const ChessBoard * board) {
 				return false;
 			}
 		}
-		if (y == 0)
-			break;
 		if (count != 0) {
 			if (!str_builder_append_char(builder, count + '0')) {
 				return false;
 			}
 			count = 0;
 		}
+		if (y == 0)
+			break;
 		if (!str_builder_append_char(builder, '/')) {
 			return false;
 		}
@@ -427,12 +427,16 @@ bool parse_move(Str move, UciMoveRequestData * out) {
 		switch (move.data[4]) {
 		case 'n':
 			piece = CHESS_KNIGHT;
+			break;
 		case 'b':
 			piece = CHESS_BISHOP;
+			break;
 		case 'r':
 			piece = CHESS_ROOK;
+			break;
 		case 'q':
 			piece = CHESS_QUEEN;
+			break;
 		default:
 			return false;
 		}

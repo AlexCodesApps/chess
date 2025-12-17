@@ -171,7 +171,7 @@ BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 t
 	BoardMoveResult result = board_make_move_internal(board, from, from_idx, to);
 	if (board->side == BLACK_SIDE)
 		++board->turn_count;
-	if (result.capture)
+	if (result.capture || board->slots[result.to].piece == CHESS_PAWN)
 		board->fifty_mv_rule = 0;
 	else
 		++board->fifty_mv_rule;

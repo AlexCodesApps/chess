@@ -75,6 +75,7 @@ typedef struct {
 	} stage;
 } UciClient;
 
+/* neccesary for communication */
 bool fen_encode_board(StrBuilder * builder, const ChessBoard * board);
 
 void uci_client_init(UciClient * client);

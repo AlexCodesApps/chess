@@ -116,7 +116,7 @@ bool str_builder_append_str(StrBuilder * builder, Str str) {
 		builder->data = ndata;
 		builder->capacity = new_cap;
 	}
-	memcpy(builder->data + builder->size, str.data, str.size);
+	SDL_memcpy(builder->data + builder->size, str.data, str.size);
 	builder->data[new_size] = '\0';
 	builder->size = new_size;
 	return true;
