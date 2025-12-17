@@ -31,14 +31,6 @@ static void transfer_to_slot(ChessBoard * board, u8 src, u8 dest) {
 	board->slots[src] = EMPTY_SLOT;
 }
 
-u8 board_lookup_idx_idx(ChessBoard * board, u8 idx) {
-	for (u8 i = 0; i < board->piece_count; ++i) {
-		if (board->piece_idxs[i] == idx)
-			return i;
-	}
-	return INVALID_PIECE_IDX;
-}
-
 static bool is_promoting_pawn_at_idx(ChessBoard * board, u8 idx) {
 	const u8 white_promoting_y = 7;
 	const u8 black_promoting_y = 0;
@@ -72,69 +64,70 @@ static bool is_pawn_enpassant_move(ChessBoard * board, u8 from, u8 to) {
 	return diff != 16 && diff != 8 && !board->slots[to].has_piece;
 }
 
-BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 * from_idx, u8 to) {
+static bool king_at_idx(ChessBoard * board, u8 idx, ChessSide side) {
+	BoardSlot * slot = &board->slots[idx];
+	return slot->piece == CHESS_KING && slot->side == side;
+}
+
+BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 to) {
 	BoardMoveResult result = {
 		.from = from,
 		.to = to,
-		.piece_idx = *from_idx,
 		.last_opt_pawn = board->opt_pawn,
 		.captured = to,
 	};
+	if (board->slots[from].piece == CHESS_KING) {
+		board->sides[board->side].king_idx = to;
+	}
 	board->opt_pawn = INVALID_PIECE_IDX;
-	u8 to_idx = board_lookup_idx_idx(board, to);
-	u8 captured_idx = to_idx;
-	if (*from_idx == WHITE_KING_IDX_IDX && from == INITIAL_WHITE_KING_IDX) {
+	if (king_at_idx(board, from, WHITE_SIDE) && from == INITIAL_WHITE_KING_IDX) {
 		if (to == WHITE_KING_SIDE_CASTLE_IDX) {
 			u8 new_rook_idx = WHITE_KING_SIDE_CASTLE_IDX + 1;
-			board->piece_idxs[INITIAL_WHITE_KING_SIDE_ROOK_IDX_IDX] = new_rook_idx;
 			transfer_to_slot(board, INITIAL_WHITE_KING_SIDE_ROOK_IDX, new_rook_idx);
 			result.castle = true;
 		} else if (to == WHITE_QUEEN_SIDE_CASTLE_IDX) {
 			u8 new_rook_idx = WHITE_QUEEN_SIDE_CASTLE_IDX - 1;
-			board->piece_idxs[INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX_IDX] = new_rook_idx;
 			transfer_to_slot(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX, new_rook_idx);
 			result.castle = true;
 		}
-		if (board->white_king_side_castle_ok) {
-			board->white_king_side_castle_ok = false;
-			result.cancelled_castle_king = true;
+		if (board->sides[WHITE_SIDE].ks_castle_ok) {
+			board->sides[WHITE_SIDE].ks_castle_ok = false;
+			result.cancelled_ks_castle = true;
 		}
-		if (board->white_queen_side_castle_ok) {
-			board->white_queen_side_castle_ok = false;
-			result.cancelled_castle_queen = true;
+		if (board->sides[WHITE_SIDE].qs_castle_ok) {
+			board->sides[WHITE_SIDE].qs_castle_ok = false;
+			result.cancelled_qs_castle = true;
 		}
-	} else if (*from_idx == BLACK_KING_IDX_IDX && from == INITIAL_BLACK_KING_IDX) {
+	} else if (king_at_idx(board, from, BLACK_SIDE) && from == INITIAL_BLACK_KING_IDX) {
 		if (to == BLACK_KING_SIDE_CASTLE_IDX) {
 			u8 new_rook_idx = BLACK_KING_SIDE_CASTLE_IDX + 1;
-			board->piece_idxs[INITIAL_BLACK_KING_SIDE_ROOK_IDX_IDX] = new_rook_idx;
 			transfer_to_slot(board, INITIAL_BLACK_KING_SIDE_ROOK_IDX, new_rook_idx);
 			result.castle = true;
 		} else if (to == BLACK_QUEEN_SIDE_CASTLE_IDX) {
 			u8 new_rook_idx = BLACK_QUEEN_SIDE_CASTLE_IDX - 1;
-			board->piece_idxs[INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX_IDX] = new_rook_idx;
 			transfer_to_slot(board, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX, new_rook_idx);
 			result.castle = true;
 		}
-		if (board->black_king_side_castle_ok) {
-			board->black_king_side_castle_ok = false;
-			result.cancelled_castle_king = true;
+		if (board->sides[BLACK_SIDE].ks_castle_ok) {
+			board->sides[BLACK_SIDE].ks_castle_ok = false;
+			result.cancelled_ks_castle = true;
 		}
-		if (board->black_queen_side_castle_ok) {
-			board->black_queen_side_castle_ok = false;
-			result.cancelled_castle_queen = true;
+		if (board->sides[BLACK_SIDE].qs_castle_ok) {
+			board->sides[BLACK_SIDE].qs_castle_ok = false;
+			result.cancelled_qs_castle = true;
 		}
-	} else if (board->white_king_side_castle_ok && *from_idx == INITIAL_WHITE_KING_SIDE_ROOK_IDX_IDX) {
-		board->white_king_side_castle_ok = false;
-		result.cancelled_castle_king = true;
-	} else if (board->white_queen_side_castle_ok && *from_idx == INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX_IDX) {
-		board->white_queen_side_castle_ok = false;
-		result.cancelled_castle_queen = true;
-	} else if (board->black_king_side_castle_ok && *from_idx == INITIAL_BLACK_KING_SIDE_ROOK_IDX_IDX) {
-		board->black_king_side_castle_ok = false;
-		result.cancelled_castle_king = true;
-	} else if (board->black_queen_side_castle_ok && *from_idx == INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX_IDX) {
-		board->black_queen_side_castle_ok = false;
-		result.cancelled_castle_queen = true;
+	} else if (board->sides[WHITE_SIDE].ks_castle_ok && from == INITIAL_WHITE_KING_SIDE_ROOK_IDX) {
+		board->sides[WHITE_SIDE].ks_castle_ok = false;
+		result.cancelled_ks_castle = true;
+	} else if (board->sides[WHITE_SIDE].qs_castle_ok && from == INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX) {
+		board->sides[WHITE_SIDE].qs_castle_ok = false;
+		result.cancelled_qs_castle = true;
+	} else if (board->sides[BLACK_SIDE].ks_castle_ok && from == INITIAL_BLACK_KING_SIDE_ROOK_IDX) {
+		board->sides[BLACK_SIDE].ks_castle_ok = false;
+		result.cancelled_ks_castle = true;
+	} else if (board->sides[BLACK_SIDE].qs_castle_ok && from == INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX) {
+		board->sides[BLACK_SIDE].qs_castle_ok = false;
+		result.cancelled_qs_castle = true;
 	} else if (board->slots[from].piece == CHESS_PAWN) {
 		if (is_pawn_enpassant_move(board, from, to)) {
 			result.en_passant = true;
@@ -142,23 +135,15 @@ BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 * from_
 			Vec2i to_pos = idx_to_rel_pos(to, side);
 			to_pos.y -= 1;
 			u8 acc_idx = rel_pos_to_idx(to_pos, side);
-			captured_idx = board_lookup_idx_idx(board, acc_idx);
-			SDL_assert(captured_idx != INVALID_PIECE_IDX);
 			board->slots[acc_idx] = EMPTY_SLOT;
 			result.captured = acc_idx;
 		} else if (absi(from - to) == 16) {
 			board->opt_pawn = to;
 		}
 	}
-	board->piece_idxs[*from_idx] = to;
-	if (captured_idx != INVALID_PIECE_IDX) {
+	if (board->slots[result.captured].has_piece) {
 		result.capture = true;
 		result.piece = board->slots[to].piece;
-		result.captured_idx = captured_idx;
-		board->piece_idxs[captured_idx] = board->piece_idxs[--board->piece_count];
-		if (board->piece_count == *from_idx) {
-			*from_idx = to_idx;
-		}
 	}
 	transfer_to_slot(board, from, to);
 	if (is_promoting_pawn_at_idx(board, to)) {
@@ -167,8 +152,8 @@ BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 * from_
 	return result;
 }
 
-BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 to) {
-	BoardMoveResult result = board_make_move_internal(board, from, from_idx, to);
+BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 to) {
+	BoardMoveResult result = board_make_move_internal(board, from, to);
 	if (board->side == BLACK_SIDE)
 		++board->turn_count;
 	if (result.capture || board->slots[result.to].piece == CHESS_PAWN)
@@ -185,6 +170,10 @@ void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_move) {
 	BoardSlot * to_slot = &board->slots[last_move.to];
 	*from_slot = *to_slot;
 	*to_slot = EMPTY_SLOT;
+
+	if (from_slot->piece == CHESS_KING) {
+		board->sides[board->side].king_idx = last_move.from;
+	}
 	if (last_move.capture) {
 		BoardSlot * captured_slot = &board->slots[last_move.captured];
 		ChessSide side = from_slot->side == WHITE_SIDE ? BLACK_SIDE : WHITE_SIDE;
@@ -193,40 +182,33 @@ void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_move) {
 			.has_piece = true,
 			.piece = last_move.piece,
 		};
-		board->piece_idxs[last_move.captured_idx] = last_move.captured;
-		++board->piece_count;
 	}
-	board->piece_idxs[last_move.piece_idx] = last_move.from;
 	if (last_move.promotion) {
 		from_slot->piece = CHESS_PAWN;
 	}
 	if (last_move.castle) {
 		if (last_move.to == WHITE_KING_SIDE_CASTLE_IDX) {
-			board->piece_idxs[INITIAL_WHITE_KING_SIDE_ROOK_IDX_IDX] = INITIAL_WHITE_KING_SIDE_ROOK_IDX;
 			transfer_to_slot(board, WHITE_KING_SIDE_CASTLE_IDX + 1, INITIAL_WHITE_KING_SIDE_ROOK_IDX);
 		} else if (last_move.to == WHITE_QUEEN_SIDE_CASTLE_IDX) {
-			board->piece_idxs[INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX_IDX] = INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX;
 			transfer_to_slot(board, WHITE_QUEEN_SIDE_CASTLE_IDX - 1, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX);
 		} else if (last_move.to == BLACK_KING_SIDE_CASTLE_IDX) {
-			board->piece_idxs[INITIAL_BLACK_KING_SIDE_ROOK_IDX_IDX] = INITIAL_BLACK_KING_SIDE_ROOK_IDX;
 			transfer_to_slot(board, BLACK_KING_SIDE_CASTLE_IDX + 1, INITIAL_BLACK_KING_SIDE_ROOK_IDX);
 		} else if (last_move.to == BLACK_QUEEN_SIDE_CASTLE_IDX) {
-			board->piece_idxs[INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX_IDX] = INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX;
 			transfer_to_slot(board, BLACK_QUEEN_SIDE_CASTLE_IDX - 1, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX);
 		}
 	}
-	if (last_move.cancelled_castle_king) {
+	if (last_move.cancelled_ks_castle) {
 		if (from_slot->side == WHITE_SIDE) {
-			board->white_king_side_castle_ok = true;
+			board->sides[WHITE_SIDE].ks_castle_ok = true;
 		} else {
-			board->black_king_side_castle_ok = true;
+			board->sides[BLACK_SIDE].ks_castle_ok = true;
 		}
 	}
-	if (last_move.cancelled_castle_queen) {
+	if (last_move.cancelled_qs_castle) {
 		if (from_slot->side == WHITE_SIDE) {
-			board->white_queen_side_castle_ok = true;
+			board->sides[WHITE_SIDE].qs_castle_ok = true;
 		} else {
-			board->black_queen_side_castle_ok = true;
+			board->sides[BLACK_SIDE].qs_castle_ok = true;
 		}
 	}
 }
@@ -272,15 +254,15 @@ static bool king_in_rook_LOS(const ChessBoard * const board, const Vec2i * kpos,
 }
 
 bool board_has_checks(ChessBoard * const board, ChessSide const side) {
-	const u8 idx_idx = side == WHITE_SIDE ? WHITE_KING_IDX_IDX : BLACK_KING_IDX_IDX;
-	const u8 idx = board->piece_idxs[idx_idx];
+	u8 idx = board->sides[side].king_idx;
 	const Vec2i kpos = idx_to_rel_pos(idx, side);
-	for (u8 i = 0; i < board->piece_count; ++i) {
-		u8 o_idx = board->piece_idxs[i];
-		BoardSlot * slot = &board->slots[o_idx];
+	for (u8 i = 0; i < 64; ++i) {
+		BoardSlot * slot = &board->slots[i];
+		if (!slot->has_piece)
+			continue;
 		if (slot->side == side)
 			continue;
-		const Vec2i opos = idx_to_rel_pos(o_idx, side);
+		const Vec2i opos = idx_to_rel_pos(i, side);
 		const Vec2i dpos = vec2i_sub(opos, kpos);
 		switch (slot->piece) {
 		case CHESS_PAWN:
@@ -320,9 +302,8 @@ no_check:
 	return false;
 }
 
-static void try_add_move(ChessBoard * board, LegalBoardMoves * moves, u8 from, u8 from_idx, u8 to, ChessSide side) {
-	u8 from_idx_cpy = from_idx;
-	BoardMoveResult move = board_make_move_internal(board, from, &from_idx_cpy, to);
+static void try_add_move(ChessBoard * board, LegalBoardMoves * moves, u8 from, u8 to, ChessSide side) {
+	BoardMoveResult move = board_make_move_internal(board, from, to);
 	bool king_in_danger = board_has_checks(board, side);
 	board_unmake_move_internal(board, move);
 	if (!king_in_danger) {
@@ -330,7 +311,7 @@ static void try_add_move(ChessBoard * board, LegalBoardMoves * moves, u8 from, u
 	}
 }
 
-LegalBoardMoves pawn_moves(ChessBoard * board, u8 from, u8 from_idx) {
+LegalBoardMoves pawn_moves(ChessBoard * board, u8 from) {
 	ChessSide side = board->slots[from].side;
 	Vec2i rel_pos = idx_to_rel_pos(from, side);
 	Vec2i fwd_pos = vec2i_new(rel_pos.x, rel_pos.y + 1);
@@ -338,31 +319,31 @@ LegalBoardMoves pawn_moves(ChessBoard * board, u8 from, u8 from_idx) {
 	if (rel_pos_in_bounds(fwd_pos)) {
 		u8 to = rel_pos_to_idx(fwd_pos, side);
 		if (is_free_idx(board, to)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 			if (rel_pos.y == 1) { /* pawn hasn't moved yet */
 				u8 to = rel_pos_to_idx(vec2i_new(rel_pos.x, rel_pos.y + 2), side);
 				if (is_free_idx(board, to)) {
-					try_add_move(board, &moves, from, from_idx, to, side);
+					try_add_move(board, &moves, from, to, side);
 				}
 			}
 		}
 		if (to % 8 != 0) {
 			u8 ep_idx = rel_pos_to_idx(rel_pos, side) - 1;
 			if (ep_idx == board->opt_pawn || is_enemy_idx(board, to - 1, side)) {
-				try_add_move(board, &moves, from, from_idx, to - 1, side);
+				try_add_move(board, &moves, from, to - 1, side);
 			}
 		}
 		if (to % 8 != 7) {
 			u8 ep_idx = rel_pos_to_idx(rel_pos, side) + 1;
 			if (ep_idx == board->opt_pawn || is_enemy_idx(board, to + 1, side)) {
-				try_add_move(board, &moves, from, from_idx, to + 1, side);
+				try_add_move(board, &moves, from, to + 1, side);
 			}
 		}
 	}
 	return moves;
 }
 
-LegalBoardMoves knight_moves(ChessBoard * board, u8 from, u8 from_idx) {
+LegalBoardMoves knight_moves(ChessBoard * board, u8 from) {
 	LegalBoardMoves moves = 0;
 	ChessSide side = board->slots[from].side;
 	Vec2i rel_pos = idx_to_rel_pos(from, side);
@@ -372,153 +353,137 @@ LegalBoardMoves knight_moves(ChessBoard * board, u8 from, u8 from_idx) {
 			continue;
 		u8 to = rel_pos_to_idx(new_pos, side);
 		if (is_free_or_enemy_idx(board, to, side)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 		}
 	}
 	return moves;
 }
 
-LegalBoardMoves bishop_moves(ChessBoard * board, u8 from, u8 from_idx) {
+LegalBoardMoves bishop_moves(ChessBoard * board, u8 from) {
 	LegalBoardMoves moves = 0;
 	ChessSide side = board->slots[from].side;
 	Vec2i rel_pos = idx_to_rel_pos(from, side);
 	for (int x = rel_pos.x - 1, y = rel_pos.y - 1; x >= 0 && y >= 0; --x, --y) {
 		u8 to = rel_pos_to_idx(vec2i_new(x, y), side);
 		if (is_free_idx(board, to)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 			continue;
 		}
 		if (is_enemy_idx(board, to, side)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 		}
 		break;
 	}
 	for (int x = rel_pos.x + 1, y = rel_pos.y - 1; x < 8 && y >= 0; ++x, --y) {
 		u8 to = rel_pos_to_idx(vec2i_new(x, y), side);
 		if (is_free_idx(board, to)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 			continue;
 		}
 		if (is_enemy_idx(board, to, side)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 		}
 		break;
 	}
 	for (int x = rel_pos.x - 1, y = rel_pos.y + 1; x >= 0 && y < 8; --x, ++y) {
 		u8 to = rel_pos_to_idx(vec2i_new(x, y), side);
 		if (is_free_idx(board, to)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 			continue;
 		}
 		if (is_enemy_idx(board, to, side)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 		}
 		break;
 	}
 	for (int x = rel_pos.x + 1, y = rel_pos.y + 1; x < 8 && y < 8; ++x, ++y) {
 		u8 to = rel_pos_to_idx(vec2i_new(x, y), side);
 		if (is_free_idx(board, to)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 			continue;
 		}
 		if (is_enemy_idx(board, to, side)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 		}
 		break;
 	}
 	return moves;
 }
 
-LegalBoardMoves rook_moves(ChessBoard * board, u8 from, u8 from_idx) {
+LegalBoardMoves rook_moves(ChessBoard * board, u8 from) {
 	LegalBoardMoves moves = 0;
 	ChessSide side = board->slots[from].side;
 	Vec2i rel_pos = idx_to_rel_pos(from, side);
 	for (int x = rel_pos.x - 1; x >= 0; --x) {
 		u8 to = rel_pos_to_idx(vec2i_new(x, rel_pos.y), side);
 		if (is_free_idx(board, to)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 			continue;
 		}
 		if (is_enemy_idx(board, to, side)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 		}
 		break;
 	}
 	for (int x = rel_pos.x + 1; x < 8; ++x) {
 		u8 to = rel_pos_to_idx(vec2i_new(x, rel_pos.y), side);
 		if (is_free_idx(board, to)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 			continue;
 		}
 		if (is_enemy_idx(board, to, side)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 		}
 		break;
 	}
 	for (int y = rel_pos.y - 1; y >= 0; --y) {
 		u8 to = rel_pos_to_idx(vec2i_new(rel_pos.x, y), side);
 		if (is_free_idx(board, to)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 			continue;
 		}
 		if (is_enemy_idx(board, to, side)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 		}
 		break;
 	}
 	for (int y = rel_pos.y + 1; y < 8; ++y) {
 		u8 to = rel_pos_to_idx(vec2i_new(rel_pos.x, y), side);
 		if (is_free_idx(board, to)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 			continue;
 		}
 		if (is_enemy_idx(board, to, side)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 		}
 		break;
 	}
 	return moves;
 }
 
-LegalBoardMoves queen_moves(ChessBoard * board, u8 from, u8 from_idx) {
-	return bishop_moves(board, from, from_idx) | rook_moves(board, from, from_idx);
+LegalBoardMoves queen_moves(ChessBoard * board, u8 from) {
+	return bishop_moves(board, from) | rook_moves(board, from);
 }
 
-LegalBoardMoves king_castle_moves(ChessBoard * board, u8 from, u8 from_idx, ChessSide side) {
+LegalBoardMoves king_castle_moves(ChessBoard * board, u8 from, ChessSide side) {
 	LegalBoardMoves moves = 0;
-	if (side == WHITE_SIDE) {
-		if (board->white_king_side_castle_ok
-			&& is_free_idx(board, INITIAL_WHITE_KING_SIDE_ROOK_IDX + 1)
-			&& is_free_idx(board, INITIAL_WHITE_KING_SIDE_ROOK_IDX + 2)
-			&& !board_has_checks(board, side)) {
-			try_add_move(board, &moves, from, from_idx, WHITE_KING_SIDE_CASTLE_IDX, side);
-		}
-		if (board->white_queen_side_castle_ok
-			&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 1)
-			&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 2)
-			&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 3)
-			&& !board_has_checks(board, side)) {
-			try_add_move(board, &moves, from, from_idx, WHITE_QUEEN_SIDE_CASTLE_IDX, side);
-		}
-	} else {
-		if (board->black_king_side_castle_ok
-			&& is_free_idx(board, INITIAL_BLACK_KING_SIDE_ROOK_IDX + 1)
-			&& is_free_idx(board, INITIAL_BLACK_KING_SIDE_ROOK_IDX + 2)
-			&& !board_has_checks(board, side)) {
-			try_add_move(board, &moves, from, from_idx, BLACK_KING_SIDE_CASTLE_IDX, side);
-		}
-		if (board->black_queen_side_castle_ok
-			&& is_free_idx(board, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX - 1)
-			&& is_free_idx(board, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX - 2)
-			&& is_free_idx(board, INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX - 3)
-			&& !board_has_checks(board, side)) {
-			try_add_move(board, &moves, from, from_idx, BLACK_QUEEN_SIDE_CASTLE_IDX, side);
-		}
+	if (board->sides[side].ks_castle_ok
+		&& is_free_idx(board, INITIAL_WHITE_KING_SIDE_ROOK_IDX + 1)
+		&& is_free_idx(board, INITIAL_WHITE_KING_SIDE_ROOK_IDX + 2)
+		&& !board_has_checks(board, side)) {
+		try_add_move(board, &moves, from, WHITE_KING_SIDE_CASTLE_IDX, side);
+	}
+	if (board->sides[side].qs_castle_ok
+		&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 1)
+		&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 2)
+		&& is_free_idx(board, INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX - 3)
+		&& !board_has_checks(board, side)) {
+		try_add_move(board, &moves, from, WHITE_QUEEN_SIDE_CASTLE_IDX, side);
 	}
 	return moves;
 }
 
-LegalBoardMoves king_moves(ChessBoard * board, u8 from, u8 from_idx) {
+LegalBoardMoves king_moves(ChessBoard * board, u8 from) {
 	LegalBoardMoves moves = 0;
 	ChessSide side = board->slots[from].side;
 	Vec2i rel_pos = idx_to_rel_pos(from, side);
@@ -528,30 +493,30 @@ LegalBoardMoves king_moves(ChessBoard * board, u8 from, u8 from_idx) {
 			continue;
 		u8 to = rel_pos_to_idx(new_pos, side);
 		if (is_free_or_enemy_idx(board, to, side)) {
-			try_add_move(board, &moves, from, from_idx, to, side);
+			try_add_move(board, &moves, from, to, side);
 		}
 	}
-	moves |= king_castle_moves(board, from, from_idx, side);
+	moves |= king_castle_moves(board, from, side);
 	return moves;
 }
 
-LegalBoardMoves board_get_legal_moves_for_piece(ChessBoard * board, u8 piece_idx, u8 piece_idx_idx) {
-	SDL_assert(piece_idx != INVALID_PIECE_IDX);
-	BoardSlot * slot = &board->slots[piece_idx];
+LegalBoardMoves board_get_legal_moves_for_piece(ChessBoard * board, u8 idx) {
+	SDL_assert(idx != INVALID_PIECE_IDX);
+	BoardSlot * slot = &board->slots[idx];
 	SDL_assert(slot->has_piece == true);
 	switch (slot->piece) {
 		case CHESS_PAWN:
-			return pawn_moves(board, piece_idx, piece_idx_idx);
+			return pawn_moves(board, idx);
 		case CHESS_KNIGHT:
-			return knight_moves(board, piece_idx, piece_idx_idx);
+			return knight_moves(board, idx);
 		case CHESS_BISHOP:
-			return bishop_moves(board, piece_idx, piece_idx_idx);
+			return bishop_moves(board, idx);
 		case CHESS_ROOK:
-			return rook_moves(board, piece_idx, piece_idx_idx);
+			return rook_moves(board, idx);
 		case CHESS_QUEEN:
-			return queen_moves(board, piece_idx, piece_idx_idx);
+			return queen_moves(board, idx);
 		case CHESS_KING:
-			return king_moves(board, piece_idx, piece_idx_idx);
+			return king_moves(board, idx);
 	}
 }
 

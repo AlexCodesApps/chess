@@ -65,7 +65,7 @@ typedef struct {
 	bool out_did_promo;
 	ChessPiece out_promo;
 	u32 timeout_ms;
-	ChessBoard board;
+	const ChessBoard * board;
 } UciMoveRequestData;
 
 typedef struct {
@@ -77,6 +77,7 @@ typedef struct {
 } UciClient;
 
 /* neccesary for communication */
+bool fen_parse_board(Str str, ChessBoard * board);
 bool fen_encode_board(StrBuilder * builder, const ChessBoard * board);
 
 void uci_client_init(UciClient * client);

@@ -29,30 +29,27 @@ typedef struct {
 	bool castle : 1;
 	bool promotion : 1;
 	bool en_passant : 1; /* offsets the piece restoration slot when unmaking move */
-	bool cancelled_castle_queen : 1;
-	bool cancelled_castle_king : 1;
+	bool cancelled_qs_castle : 1;
+	bool cancelled_ks_castle : 1;
 	ChessPiece piece : 3;
 	u8 from;
 	u8 to;
-	u8 piece_idx;
 	u8 captured;
-	u8 captured_idx;
 	u8 last_opt_pawn;
 } BoardMoveResult;
 
 typedef struct {
 	BoardSlot slots[64];
-	u8 piece_idxs[32];
 	usize fifty_mv_rule;
 	usize turn_count;
-	u8 piece_count;
 	u8 opt_pawn;
 	/* determines whether the possibility of castling is still there */
 	ChessSide side : 1;
-	bool white_queen_side_castle_ok : 1;
-	bool white_king_side_castle_ok : 1;
-	bool black_queen_side_castle_ok : 1;
-	bool black_king_side_castle_ok : 1;
+	struct {
+		bool qs_castle_ok : 1;
+		bool ks_castle_ok : 1;
+		u8 king_idx;
+	} sides[2];
 } ChessBoard;
 
 #define EMPTY_SLOT ((BoardSlot) { .has_piece = 0 })
@@ -80,35 +77,27 @@ static const ChessBoard INITIAL_CHESS_BOARD = {
 		B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN),
 		B(ROOK), B(KNIGHT), B(BISHOP), B(KING), B(QUEEN), B(BISHOP), B(KNIGHT), B(ROOK),
 	},
-	.piece_idxs = {
-		/* White pieces */
-		0, 1, 2, 3, 4, 5, 6, 7,
-		8, 9, 10, 11, 12, 13, 14, 15,
-		/* Black pieces */
-		48, 49, 50, 51, 52, 53, 54, 55,
-		56, 57, 58, 59, 60, 61, 62, 63
-	},
 	.turn_count = 1,
 	.fifty_mv_rule = 0,
-	.piece_count = 32,
 	.opt_pawn = INVALID_PIECE_IDX,
 	.side = WHITE_SIDE,
-	.white_queen_side_castle_ok = true,
-	.white_king_side_castle_ok = true,
-	.black_queen_side_castle_ok = true,
-	.black_king_side_castle_ok = true,
+	.sides = {
+		[0] = {
+			.ks_castle_ok = true,
+			.qs_castle_ok = true,
+			.king_idx = 3,
+		},
+		[1] = {
+			.ks_castle_ok = true,
+			.qs_castle_ok = true,
+			.king_idx = 59,
+		},
+	},
 };
 
 #undef W
 #undef E
 #undef B
-
-/* these two pieces should never be able to be captured,
- * so their indexes are constant
- */
-
-#define WHITE_KING_IDX_IDX 3
-#define BLACK_KING_IDX_IDX 27
 
 /* These are only valid when the kings haven't moved */
 #define INITIAL_WHITE_KING_IDX 3
@@ -124,12 +113,6 @@ static const ChessBoard INITIAL_CHESS_BOARD = {
 
 #define INITIAL_BLACK_KING_SIDE_ROOK_IDX 56
 #define INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX 63
-
-#define INITIAL_WHITE_KING_SIDE_ROOK_IDX_IDX 0
-#define INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX_IDX 7
-
-#define INITIAL_BLACK_KING_SIDE_ROOK_IDX_IDX 24
-#define INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX_IDX 31
 
 #define WHITE_KING_SIDE_CASTLE_IDX 1
 #define WHITE_QUEEN_SIDE_CASTLE_IDX 5
@@ -157,14 +140,12 @@ static bool legal_board_moves_contains_idx(LegalBoardMoves moves, u8 idx) {
 	return (moves & ((u64)1 << idx)) != 0;
 }
 
-u8 board_lookup_idx_idx(ChessBoard * board, u8 idx);
-
 bool board_has_checks(ChessBoard * board, ChessSide side);
 
 /* INVARIANT: from != to */
-BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 * from_idx, u8 to);
+BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 to);
 /* INVARIANT: from != to */
-BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 * from_idx, u8 to);
+BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 to);
 
 void board_set_promotion_type(ChessBoard * board, ChessPiece piece);
 
@@ -172,6 +153,6 @@ void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_move);
 
 /* INVARIANT: Index must be to actual piece */
 /* INVARIANT: Kings should never be capturable or corruption of state occurs */
-LegalBoardMoves board_get_legal_moves_for_piece(ChessBoard * board, u8 piece_idx, u8 piece_idx_idx);
+LegalBoardMoves board_get_legal_moves_for_piece(ChessBoard * board, u8 idx);
 
 const char * chess_piece_str(ChessPiece piece);

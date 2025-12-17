@@ -289,6 +289,14 @@ void uci_client_free(UciClient * client) {
 	SDL_free(client->backed_up_ptr);
 }
 
+bool fen_parse_board(Str str, ChessBoard * board) {
+	SDL_zero(*board);
+	const char * iter = str.data;
+	u8 idx = 63;
+	// TODO
+	return false;
+}
+
 bool fen_encode_board(StrBuilder * builder, const ChessBoard * board) {
 	u8 count = 0; // empty square count
 	for (i8 y = 7;; --y) {
@@ -350,13 +358,13 @@ bool fen_encode_board(StrBuilder * builder, const ChessBoard * board) {
 	{
 		char buf[4];
 		u8 bufc = 0;
-		if (board->white_king_side_castle_ok)
+		if (board->sides[WHITE_SIDE].ks_castle_ok)
 			buf[bufc++] = 'K';
-		if (board->white_queen_side_castle_ok)
+		if (board->sides[WHITE_SIDE].qs_castle_ok)
 			buf[bufc++] = 'Q';
-		if (board->black_king_side_castle_ok)
+		if (board->sides[BLACK_SIDE].ks_castle_ok)
 			buf[bufc++] = 'k';
-		if (board->black_queen_side_castle_ok)
+		if (board->sides[BLACK_SIDE].qs_castle_ok)
 			buf[bufc++] = 'q';
 		if (bufc != 0) {
 			if (!str_builder_append_str(builder, str_new(buf, bufc))) {
@@ -498,7 +506,7 @@ UciClientPollResult uci_poll_client(UciClient * client, UciServer * server) {
 			if (!str_builder_append_str(&builder, S("position fen "))) {
 				return UCI_POLL_CLIENT_OOM;
 			}
-			if (!fen_encode_board(&builder, &client->move_request->board)) {
+			if (!fen_encode_board(&builder, client->move_request->board)) {
 				str_builder_free(&builder);
 				return UCI_POLL_CLIENT_OOM;
 			}
