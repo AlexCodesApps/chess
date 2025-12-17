@@ -62,6 +62,7 @@ typedef enum {
 typedef struct {
 	u8 out_to;
 	u8 out_from;
+	bool out_did_promo;
 	ChessPiece out_promo;
 	u32 timeout_ms;
 	ChessBoard board;

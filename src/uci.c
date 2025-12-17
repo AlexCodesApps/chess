@@ -440,6 +440,7 @@ bool parse_move(Str move, UciMoveRequestData * out) {
 		default:
 			return false;
 		}
+		out->out_did_promo = true;
 		out->out_promo = piece;
 	}
 	return true;
