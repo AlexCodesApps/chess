@@ -5,7 +5,7 @@ void state_init(State * state, const Display * display) {
 	f32 w = (f32)mini(display->win_dims.x, display->win_dims.y);
 	state->bg_scale = w / (8 * 16 * 2);
 	state->bg_rect = rect2f_new(0, 0, 8 * 8, 8 * 8);
-	state->bg_speed = 1;
+	state->bg_speed = -1;
 	state->bg_direction = 0;
 }
 
@@ -22,13 +22,13 @@ void state_process_event(State * state, const Event * event) {
 	}
 }
 
-StateUpdateResult state_update(State * state) {
+StateUpdateResult state_update(State * state, f32 delta_time) {
 	if (state->should_quit)
 		return STATE_UPDATE_QUIT;
-	f32 accel = (f32)(((i8)state->bg_direction << 1) - 1) * 0.05;
-	state->bg_speed = clampf(state->bg_speed + accel, -1, 1);
-	state->bg_rect.x += state->bg_speed;
-	state->bg_rect.y += state->bg_speed;
+	f32 accel = (state->bg_direction == 0 ? -1 : 1) * 100;
+	state->bg_speed = clampf(state->bg_speed + accel * delta_time, -50, 50);
+	state->bg_rect.x += state->bg_speed * delta_time;
+	state->bg_rect.y += state->bg_speed * delta_time;
 	if (state->bg_rect.x > state->bg_rect.w) {
 		state->bg_rect.x = 0;
 	} else if (state->bg_rect.x < 0) {
