@@ -14,7 +14,7 @@ bool display_open(Display * display) {
 						0, &display->window, &display->renderer)) {
 		return false;
 	}
-	if (!SDL_GetWindowSize(display->window, &display->window_dimensions.x, &display->window_dimensions.y)) {
+	if (!SDL_GetWindowSize(display->window, &display->win_dims.x, &display->win_dims.y)) {
 		SDL_DestroyRenderer(display->renderer);
 		SDL_DestroyWindow(display->window);
 		return false;

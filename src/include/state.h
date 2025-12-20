@@ -1,5 +1,4 @@
-#include "chess.h"
-#include "linalg.h"
+#include "maths.h"
 #include "texture.h"
 
 typedef enum {
@@ -16,7 +15,19 @@ typedef struct {
 	} as;
 } Event;
 
+typedef enum {
+	STATE_STAGE_TITLE_SCREEN,
+	STATE_STAGE_GAME,
+	STATE_STAGE_PAUSE_SCREEN,
+} StateStage;
+
 typedef struct {
+	StateStage stage;
+	Rect2f bg_rect;
+	f32 bg_scale;
+	f32 bg_speed;
+	bool should_quit : 1;
+	u8 bg_direction : 1;
 } State;
 
 typedef enum {

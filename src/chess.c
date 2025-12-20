@@ -1,5 +1,5 @@
 #include "include/chess.h"
-#include "include/linalg.h"
+#include "include/maths.h"
 #include <SDL3/SDL_assert.h>
 #include <SDL3/SDL_log.h>
 

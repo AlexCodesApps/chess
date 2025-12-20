@@ -9,6 +9,24 @@ const char * texture_id_to_asset_path(TextureId id) {
 			return "assets/hover_shadow.png";
 		case TEXTURE_ID_PROMOTION_DIALOG_BOX:
 			return "assets/promotion_dialog_box.png";
+		case TEXTURE_ID_LETTERS:
+			return "assets/letters.png";
+		case TEXTURE_ID_RIGHT_BORDER:
+			return "assets/right_border.png";
+		case TEXTURE_ID_LEFT_BORDER:
+			return "assets/left_border.png";
+		case TEXTURE_ID_TOP_BORDER:
+			return "assets/top_border.png";
+		case TEXTURE_ID_BOTTOM_BORDER:
+			return "assets/bottom_border.png";
+		case TEXTURE_ID_TOP_RIGHT_BORDER:
+			return "assets/top_right_border.png";
+		case TEXTURE_ID_TOP_LEFT_BORDER:
+			return "assets/top_left_border.png";
+		case TEXTURE_ID_BOTTOM_RIGHT_BORDER:
+			return "assets/bottom_right_border.png";
+		case TEXTURE_ID_BOTTOM_LEFT_BORDER:
+			return "assets/bottom_left_border.png";
 		case TEXTURE_ID_WHITE_PAWN:
 			return "assets/white_pawn.png";
 		case TEXTURE_ID_WHITE_KNIGHT:

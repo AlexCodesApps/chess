@@ -61,6 +61,7 @@ int main(int argc, char ** argv) {
 		}
 		state_draw(&state, &cache, &display);
 		display_flip(&display);
+		SDL_Delay(16);
 	}
 	texture_cache_free(&cache);
 	SDL_Log("Freed textures");

@@ -1,5 +1,5 @@
 #include "ints.h"
-#include "linalg.h"
+#include "maths.h"
 #include <SDL3/SDL.h>
 
 typedef SDL_Renderer Renderer;
@@ -9,7 +9,7 @@ typedef SDL_Color Color;
 typedef struct {
 	Renderer * renderer;
 	Window * window;
-	Vec2i window_dimensions;
+	Vec2i win_dims;
 } Display;
 
 bool display_open(Display * display);

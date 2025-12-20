@@ -1,6 +1,6 @@
 #pragma once
 #include "ints.h"
-#include "linalg.h"
+#include "maths.h"
 
 #define INVALID_PIECE_IDX ((u8)255)
 

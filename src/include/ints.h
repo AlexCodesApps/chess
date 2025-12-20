@@ -14,3 +14,5 @@ typedef int64_t i64;
 typedef intptr_t isize;
 typedef float f32;
 typedef double f64;
+
+#define USIZE_MAX UINTPTR_MAX

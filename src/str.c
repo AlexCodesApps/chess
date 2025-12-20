@@ -136,11 +136,12 @@ bool str_builder_append_usize(StrBuilder * builder, usize u) {
 	for (usize u2 = u / 10; u2 != 0; u2 /= 10) {
 		exp *= 10;
 	}
-	while (exp) {
-		u8 digit = (u / exp) % 10;
-		if (!str_builder_append_char(builder, digit + '0'))
+	do {
+		u8 digit = (u / exp) % 10 + '0';
+		if (!str_builder_append_char(builder, digit)) {
 			return false;
+		}
 		exp /= 10;
-	}
+	} while (exp);
 	return true;
 }

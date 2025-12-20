@@ -24,6 +24,14 @@ static i32 maxi(i32 a, i32 b) {
 	return a > b ? a : b;
 }
 
+static f32 clampf(f32 value, f32 min, f32 max) {
+	if (value < min)
+		return min;
+	if (value > max)
+		return max;
+	return value;
+}
+
 static Vec2i vec2i_new(i32 x, i32 y) {
 	return (Vec2i) { x, y };
 }
