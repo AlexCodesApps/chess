@@ -16,14 +16,21 @@ typedef struct {
 } Event;
 
 typedef enum {
-	STATE_STAGE_TITLE_SCREEN,
+	STATE_STAGE_TITLE,
+	STATE_STAGE_ABOUT,
 	STATE_STAGE_GAME,
-	STATE_STAGE_PAUSE_SCREEN,
+	STATE_STAGE_PAUSE,
 } StateStage;
 
 typedef struct {
-	StateStage stage;
 	Rect2f bg_rect;
+	Rect2f menu_rect;
+	Rect2f menu_title_rect;
+	Rect2f play_button_rect;
+	Rect2f about_button_rect;
+	Rect2f quit_button_rect;
+	Vec2f mouse_pos;
+	StateStage stage;
 	f32 bg_scale;
 	f32 bg_speed;
 	bool should_quit : 1;

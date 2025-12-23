@@ -54,6 +54,29 @@ const char * texture_id_to_asset_path(TextureId id) {
 	}
 }
 
+static bool surface_lock_rw(SDL_Surface ** ptr) {
+	SDL_Surface * sf = *ptr;
+	if (sf->format != SDL_PIXELFORMAT_RGBA32) {
+		SDL_Surface * nsf = SDL_ConvertSurface(sf, SDL_PIXELFORMAT_RGBA32);
+		if (!nsf) {
+			SDL_Log("Couldn't convert surface to RGBA32 encoding %p", sf);
+			return false;
+		}
+		SDL_DestroySurface(sf);
+		sf = nsf;
+		*ptr = nsf;
+	}
+	if (!SDL_LockSurface(sf)) {
+		SDL_Log("Couldn't lock surface at %p", sf);
+		return false;
+	}
+	return true;
+}
+
+static void surface_unlock_rw(SDL_Surface * sf) {
+	SDL_UnlockSurface(sf);
+}
+
 bool texture_cache_init(TextureCache * cache, Renderer * renderer) {
 	const char * base = SDL_GetBasePath();
 	int i;
@@ -61,11 +84,32 @@ bool texture_cache_init(TextureCache * cache, Renderer * renderer) {
 		const char * rel_path = texture_id_to_asset_path((TextureId)i);
 		char * path;
 		if (SDL_asprintf(&path, "%s/%s", base, rel_path) < 0) {
-			SDL_Log("couldn't allocate memory for path '%s/%s'", base, rel_path);
+			SDL_Log("Couldn't allocate memory for path '%s/%s'", base, rel_path);
 			goto error;
 		}
-		Texture * tx = IMG_LoadTexture(renderer, path);
+		SDL_Surface * sf = IMG_Load(path);
 		SDL_free(path);
+		if (!sf) {
+			SDL_Log("Couldn't load image at [%s/%s]", base, rel_path);
+			goto error;
+		}
+		if (i == TEXTURE_ID_LETTERS) {
+			if (!surface_lock_rw(&sf)) {
+				SDL_DestroySurface(sf);
+				goto error;
+			}
+			u32 * pixels = sf->pixels;
+			isize area = sf->w * sf->h;
+			for (isize i = 0; i < area; ++i) {
+				u32 * pixel = &pixels[i];
+				if (*pixel != 0) {
+					*(SDL_Color *)pixel = COLOR_BLACK;
+				}
+			}
+			surface_unlock_rw(sf);
+		}
+		Texture * tx = SDL_CreateTextureFromSurface(renderer, sf);
+		SDL_DestroySurface(sf);
 		if (!tx)
 			goto error;
 		if (!SDL_SetTextureScaleMode(tx, SDL_SCALEMODE_NEAREST)) {

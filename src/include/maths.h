@@ -32,6 +32,22 @@ static f32 clampf(f32 value, f32 min, f32 max) {
 	return value;
 }
 
+static f32 round_to_nearest(f32 a, f32 nearest) {
+	return SDL_roundf(a / nearest) * nearest;
+}
+
+static f32 floor_to_nearest(f32 a, f32 nearest) {
+	return SDL_floorf(a / nearest) * nearest;
+}
+
+static f32 ceil_to_nearest(f32 a, f32 nearest) {
+	return SDL_ceil(a / nearest) * nearest;
+}
+
+static bool floats_equal_epsilon(f32 a, f32 b) {
+	return SDL_fabs(a - b) < SDL_FLT_EPSILON;
+}
+
 static Vec2i vec2i_new(i32 x, i32 y) {
 	return (Vec2i) { x, y };
 }
@@ -102,4 +118,16 @@ static Vec2i rect2i_pos(Rect2i r) {
 
 static Vec2f rect2f_pos(Rect2f r) {
 	return vec2f_new(r.x, r.y);
+}
+
+static void partition_rect_vert(Rect2f rect, f32 ratio, Rect2f * upper, Rect2f * lower) {
+	f32 fst_h = rect.h * ratio;
+	*upper = rect2f_new(rect.x, rect.y, rect.w, fst_h);
+	*lower = rect2f_new(rect.x, rect.y + fst_h, rect.w, rect.h - fst_h);
+}
+
+static void partition_rect_horiz(Rect2f rect, f32 ratio, Rect2f * left, Rect2f * right) {
+	f32 fst_w = rect.w * ratio;
+	*left = rect2f_new(rect.x, rect.y, fst_w, rect.h);
+	*right = rect2f_new(rect.x + fst_w, rect.y, rect.w - fst_w, rect.h);
 }

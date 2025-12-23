@@ -44,7 +44,7 @@ bool msg_queue_push(MsgQueue * queue, void * line, bool block) {
 			return false;
 		}
 		SDL_WaitCondition(queue->space_avail_cond, queue->lock);
-		if (queue->closed != 0) {
+		if (queue->closed) {
 			SDL_UnlockMutex(queue->lock);
 			return false;
 		}
@@ -68,7 +68,7 @@ void * msg_queue_pop(MsgQueue * queue, bool block) {
 			return NULL;
 		}
 		SDL_WaitCondition(queue->items_avail_cond, queue->lock);
-		if (queue->closed != 0) {
+		if (queue->closed) {
 			SDL_UnlockMutex(queue->lock);
 			return NULL;
 		}
@@ -84,8 +84,6 @@ void msg_queue_close(MsgQueue * queue) {
 	SDL_LockMutex(queue->lock);
 	queue->closed = 1;
 	for (u8 i = queue->head; i != queue->tail; i = next(i)) {
-		SDL_free(queue->buf[i]);
-		queue->buf[i] = NULL;
 	}
 	SDL_UnlockMutex(queue->lock);
 	SDL_SignalCondition(queue->items_avail_cond);
@@ -98,16 +96,31 @@ int producer_thread(void * arg) {
 	SDL_IOStream * in = SDL_GetProcessOutput(server->process);
 	while (SDL_GetAtomicInt(&server->cancel) == 0) {
 		u8 c;
-		while (SDL_ReadU8(in, &c)) {
-			if (c == '\n')
+		for (;;) {
+			if (!SDL_ReadU8(in, &c)) {
+				if (SDL_GetIOStatus(in) == SDL_IO_STATUS_NOT_READY) {
+					continue;
+				}
 				break;
+			}
+			if (c == '\n') {
+				break;
+			}
 			if (!str_builder_append_char(&builder, c)) {
 				str_builder_free(&builder);
 				SDL_SetAtomicInt(&server->eof, 1);
 				return -1;
 			}
 		}
-		msg_queue_push(&server->output, builder.data, true);
+		if (!str_builder_ensure_null_term(&builder)) {
+			str_builder_free(&builder);
+			SDL_SetAtomicInt(&server->eof, 1);
+			return -1;
+		}
+		if (!msg_queue_push(&server->output, builder.data, true)) {
+			SDL_free(builder.data);
+			break;
+		}
 		str_builder_init(&builder);
 		if (SDL_GetIOStatus(in) == SDL_IO_STATUS_EOF) {
 			break;
@@ -141,6 +154,10 @@ bool uci_server_start(UciServer * server, const char * const * args) {
 	server->process = process;
 	server->cancel.value = 0;
 	server->eof.value = 0;
+	/* Consumer should be constructed before producer because
+	   If the producer is constructed first and constructing the consumer fails,
+	   then allocated lines the producer processed from the process may leak.
+	*/
 	SDL_Thread * consumer = SDL_CreateThread(consumer_thread, NULL, server);
 	if (!consumer)
 		goto destroy_process;
@@ -190,6 +207,14 @@ int uci_server_close(UciServer * server) {
 	int status = uci_server_shutdown(server);
 	SDL_WaitThread(server->consumer, NULL);
 	SDL_WaitThread(server->producer, NULL);
+	for (u8 i = server->input.head; i != server->input.tail; i = next(i)) {
+		SDL_Log("Unread message from server : %s\n", (char *)server->input.buf[i]);
+		SDL_free(server->input.buf[i]);
+	}
+	for (u8 i = server->output.head; i != server->output.tail; i = next(i)) {
+		SDL_Log("Unread message to server : %s\n", (char *)server->output.buf[i]);
+		SDL_free(server->output.buf[i]);
+	}
 	msg_queue_destroy(&server->input);
 	msg_queue_destroy(&server->output);
 	return status;
@@ -282,7 +307,7 @@ static UciClientPollResult start_send_request_lit(UciClient * client, UciServer 
 }
 
 void uci_client_init(UciClient * client) {
-	SDL_zero(*client);
+	SDL_zerop(client);
 }
 
 void uci_client_free(UciClient * client) {
@@ -290,7 +315,7 @@ void uci_client_free(UciClient * client) {
 }
 
 bool fen_parse_board(Str str, ChessBoard * board) {
-	SDL_zero(*board);
+	SDL_zerop(board);
 	const char * iter = str.data;
 	u8 idx = 63;
 	// TODO

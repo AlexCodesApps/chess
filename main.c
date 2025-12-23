@@ -39,8 +39,8 @@ int main(int argc, char ** argv) {
 				break;
 			case SDL_EVENT_MOUSE_MOTION:
 				event.type = MOUSE_MOVE_EVENT;
-				event.as.mouse_move.x = _event.motion.x;
-				event.as.mouse_move.y = _event.motion.y;
+				event.as.mouse_move.x = _event.motion.x / display.scale;
+				event.as.mouse_move.y = _event.motion.y / display.scale;
 				break;
 			case SDL_EVENT_MOUSE_BUTTON_DOWN:
 				event.type = MOUSE_DOWN_EVENT;

@@ -73,12 +73,21 @@ isize str_find_str(Str str, Str needle) {
 	return STR_NPOS;
 }
 
+usize str_count_ch(Str str, char c) {
+	usize count = 0;
+	for (usize i = 0; i < str.size; ++i) {
+		if (str.data[i] == c)
+			++count;
+	}
+	return count;
+}
+
 StrBuilder str_builder_new() {
 	return (StrBuilder){0};
 }
 
 void str_builder_init(StrBuilder * builder) {
-	SDL_zero(*builder);
+	SDL_zerop(builder);
 }
 
 void str_builder_free(StrBuilder * builder) {
@@ -88,6 +97,22 @@ void str_builder_free(StrBuilder * builder) {
 void str_builder_clear(StrBuilder * builder) {
 	str_builder_free(builder);
 	str_builder_init(builder);
+}
+
+bool str_builder_ensure_null_term(StrBuilder * builder) {
+	if (builder->size != 0) {
+		return true;
+	}
+	if (builder->capacity == 0) {
+		builder->data = SDL_malloc(1);
+		if (!builder->data) {
+			return false;
+		}
+		builder->capacity = 1;
+	}
+	builder->data[0] = '\0';
+	builder->size = 1;
+	return true;
 }
 
 bool str_builder_append_char(StrBuilder * builder, char c) {
@@ -144,4 +169,8 @@ bool str_builder_append_usize(StrBuilder * builder, usize u) {
 		exp /= 10;
 	} while (exp);
 	return true;
+}
+
+Str str_builder_as_str(StrBuilder * builder) {
+	return str_new(builder->data, builder->size);
 }

@@ -3,7 +3,6 @@
 #include "chess.h"
 #include "ints.h"
 #include "str.h"
-#include <SDL3/SDL_asyncio.h>
 #include <SDL3/SDL_mutex.h>
 #include <SDL3/SDL_process.h>
 #define UCI_SERVER_QUEUE_MAX 8

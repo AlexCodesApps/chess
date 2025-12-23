@@ -1,5 +1,12 @@
 #include "../src/include/chess.h"
 #include "../src/include/uci.h"
+#include <signal.h>
+
+static int intr = 0;
+
+void sigint(int _) {
+	intr = 1;
+}
 
 LegalBoardMoves refresh_moves(ChessBoard * board, LegalBoardMoves moves[static 64]) {
 	LegalBoardMoves composite_moves = 0;
@@ -14,7 +21,7 @@ LegalBoardMoves refresh_moves(ChessBoard * board, LegalBoardMoves moves[static 6
 	return composite_moves;
 }
 
-int main() {
+int main(void) {
 	ChessBoard board = INITIAL_CHESS_BOARD;
 	UciServer server;
 	UciClient client;
@@ -31,7 +38,8 @@ int main() {
 		.timeout_ms = 1000,
 	};
 	uci_client_request_move(&client, &req);
-	for (;;) {
+	signal(SIGINT, sigint);
+	while (!intr) {
 		UciClientPollResult poll = uci_poll_client(&client, &server);
 		switch (poll) {
 		case UCI_POLL_CLIENT_OOM:
@@ -49,8 +57,8 @@ int main() {
 			LegalBoardMoves legal = moves[req.out_from];
 			SDL_assert(legal_board_moves_contains_idx(legal, req.out_to));
 			BoardMoveResult result = board_make_move(&board, req.out_from, req.out_to);
+			SDL_assert(result.promotion == req.out_did_promo);
 			if (result.promotion) {
-				SDL_assert(req.out_did_promo);
 				board.slots[req.out_to].piece = req.out_promo;
 			}
 			LegalBoardMoves composite_moves = refresh_moves(&board, moves);
