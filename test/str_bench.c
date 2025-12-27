@@ -4,7 +4,7 @@
 
 bool str_builder_append_usize_1(StrBuilder * builder, usize u) {
 	SDL_COMPILE_TIME_ASSERT(a, sizeof(usize) == 8);
-	char buf[20]; // maximum neccesary buffer size
+	char buf[20]; /* maximum neccesary buffer size */
 	unsigned bufl = 0;
 	usize exp = 1;
 	for (usize u2 = u / 10; u2 != 0; u2 /= 10) {

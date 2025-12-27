@@ -122,12 +122,12 @@ static Vec2f rect2f_pos(Rect2f r) {
 
 static void partition_rect_vert(Rect2f rect, f32 ratio, Rect2f * upper, Rect2f * lower) {
 	f32 fst_h = rect.h * ratio;
-	*upper = rect2f_new(rect.x, rect.y, rect.w, fst_h);
-	*lower = rect2f_new(rect.x, rect.y + fst_h, rect.w, rect.h - fst_h);
+	if (upper) *upper = rect2f_new(rect.x, rect.y, rect.w, fst_h);
+	if (lower) *lower = rect2f_new(rect.x, rect.y + fst_h, rect.w, rect.h - fst_h);
 }
 
 static void partition_rect_horiz(Rect2f rect, f32 ratio, Rect2f * left, Rect2f * right) {
 	f32 fst_w = rect.w * ratio;
-	*left = rect2f_new(rect.x, rect.y, fst_w, rect.h);
-	*right = rect2f_new(rect.x + fst_w, rect.y, rect.w - fst_w, rect.h);
+	if (left) *left = rect2f_new(rect.x, rect.y, fst_w, rect.h);
+	if (right) *right = rect2f_new(rect.x + fst_w, rect.y, rect.w - fst_w, rect.h);
 }

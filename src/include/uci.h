@@ -71,8 +71,6 @@ typedef struct {
 	UciClientState state;
 	char * backed_up_ptr;
 	UciMoveRequestData * move_request;
-	union {
-	} stage;
 } UciClient;
 
 /* neccesary for communication */

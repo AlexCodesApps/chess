@@ -28,7 +28,6 @@ int main(int argc, char ** argv) {
 	bool running = true;
 	SDL_Log("Entering main loop");
 	u64 initial_ticks = SDL_GetTicks();
-	float delta_time = 0;
 	while (running) {
 		SDL_Event _event;
 		Event event;
@@ -53,13 +52,11 @@ int main(int argc, char ** argv) {
 			}
 			state_process_event(&state, &event);
 		}
-		// delta time
-		{
-			u64 current_ticks = SDL_GetTicks();
-			delta_time = (f32)(current_ticks - initial_ticks) / SDL_MS_PER_SECOND;
-			initial_ticks = current_ticks;
-		}
-		StateUpdateResult result = state_update(&state, delta_time);
+		u64 current_ticks = SDL_GetTicks();
+		f32 elapsed_time = (f32)current_ticks / SDL_MS_PER_SECOND;
+		f32 delta_time = (f32)(current_ticks - initial_ticks) / SDL_MS_PER_SECOND;
+		initial_ticks = current_ticks;
+		StateUpdateResult result = state_update(&state, elapsed_time, delta_time);
 		switch (result) {
 		case STATE_UPDATE_QUIT:
 			running = false;

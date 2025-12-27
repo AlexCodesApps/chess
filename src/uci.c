@@ -38,7 +38,7 @@ bool msg_queue_push(MsgQueue * queue, void * line, bool block) {
 	if (queue->closed != 0) {
 		return false;
 	}
-	if (queue->head == next(queue->tail)) { // full
+	if (queue->head == next(queue->tail)) { /* full */
 		if (!block) {
 			SDL_UnlockMutex(queue->lock);
 			return false;
@@ -62,7 +62,7 @@ void * msg_queue_pop(MsgQueue * queue, bool block) {
 		SDL_UnlockMutex(queue->lock);
 		return NULL;
 	}
-	if (queue->head == queue->tail) { // empty
+	if (queue->head == queue->tail) { /* empty */
 		if (!block) {
 			SDL_UnlockMutex(queue->lock);
 			return NULL;
@@ -318,12 +318,12 @@ bool fen_parse_board(Str str, ChessBoard * board) {
 	SDL_zerop(board);
 	const char * iter = str.data;
 	u8 idx = 63;
-	// TODO
+	/* TODO */
 	return false;
 }
 
 bool fen_encode_board(StrBuilder * builder, const ChessBoard * board) {
-	u8 count = 0; // empty square count
+	u8 count = 0; /* empty square count */
 	for (i8 y = 7;; --y) {
 		for (i8 x = 7; x >= 0; --x) {
 			u8 idx = (y * 8) + x;
@@ -543,7 +543,7 @@ UciClientPollResult uci_poll_client(UciClient * client, UciServer * server) {
 				str_builder_free(&builder);
 				return UCI_POLL_CLIENT_OOM;
 			}
-			SDL_Log("launched request [\n%s\n]", builder.data);
+			SDL_Log("Launched request [\n%s\n]", builder.data);
 			return start_send_request(client, server, builder.data);
 		}
 	case UCI_CLIENT_EXPECTING_MOVE_REQ_RESP:
@@ -555,7 +555,7 @@ UciClientPollResult uci_poll_client(UciClient * client, UciServer * server) {
 			char * iter = line;
 			Str cmd = get_cmd_name(&iter);
 			if (str_equal(cmd, S("bestmove"))) {
-				SDL_Log("request fulfilled");
+				SDL_Log("Request fulfilled");
 				UciMoveRequestData * req = client->move_request;
 				Str bestmove = next_token(&iter);
 				if (!parse_move(bestmove, req)) {

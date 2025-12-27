@@ -27,6 +27,10 @@ const char * texture_id_to_asset_path(TextureId id) {
 			return "assets/bottom_right_border.png";
 		case TEXTURE_ID_BOTTOM_LEFT_BORDER:
 			return "assets/bottom_left_border.png";
+		case TEXTURE_ID_SLIDER:
+			return "assets/slider.png";
+		case TEXTURE_ID_HUMAN_BOT_SLIDER:
+			return "assets/human_bot_slider.png";
 		case TEXTURE_ID_WHITE_PAWN:
 			return "assets/white_pawn.png";
 		case TEXTURE_ID_WHITE_KNIGHT:

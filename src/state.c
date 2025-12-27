@@ -1,6 +1,42 @@
 #include "include/state.h"
 #include "include/str.h"
 
+#define SLOT_HEIGHT (SCREEN_WIDTH / 12.0)
+#define SLOT_WIDTH (SCREEN_WIDTH * 0.5)
+#define SLOT_X (SCREEN_WIDTH * 0.25)
+
+#define MENU_TITLE_SLOT 3
+#define PLAY_BUTTON_SLOT 6
+#define ABOUT_BUTTON_SLOT 7
+#define BACK_BUTTON_SLOT 7
+#define QUIT_BUTTON_SLOT 8
+#define START_BUTTON_SLOT 10
+
+#define MENU_RECT \
+	((Rect2f){SCREEN_WIDTH * 0.25, SCREEN_WIDTH * 0.25, SCREEN_WIDTH * 0.5, \
+		SCREEN_WIDTH * 0.5})
+
+#define BOARD_RECT ((Rect2f){ SCREEN_WIDTH * 0.1, SCREEN_WIDTH * 0.1, SCREEN_WIDTH * 0.8, SCREEN_WIDTH * 0.8 })
+#define BOARD_SLOT_WIDTH ((SCREEN_WIDTH * 0.8) / 8.0)
+
+static inline Rect2f get_slot_rect(int slot) {
+	return rect2f_new(SLOT_X, SLOT_HEIGHT * slot, SLOT_WIDTH, SLOT_HEIGHT);
+}
+
+LegalBoardMoves refresh_moves(ChessBoard * board, LegalBoardMoves moves[64]) {
+	LegalBoardMoves composite_moves = 0;
+	SDL_memset(moves, 0, sizeof(*moves) * 64);
+	for (u8 i = 0; i < 64; ++i) {
+		BoardSlot * slot = &board->slots[i];
+		if (slot->has_piece && slot->side == board->side) {
+			LegalBoardMoves _moves = board_get_legal_moves_for_piece(board, i);
+			moves[i] = _moves;
+			composite_moves |= _moves;
+		}
+	}
+	return composite_moves;
+}
+
 void state_init(State * state, const Display * display) {
 	SDL_zerop(state);
 	state->stage = STATE_STAGE_TITLE;
@@ -8,17 +44,21 @@ void state_init(State * state, const Display * display) {
 	state->bg_rect = rect2f_new(0, 0, 8 * 8, 8 * 8);
 	state->bg_speed = -50;
 	state->bg_direction = 0;
-	state->menu_rect = rect2f_new(
-		SCREEN_WIDTH * 0.25,
-		SCREEN_WIDTH * 0.25,
-		SCREEN_WIDTH * 0.5,
-		SCREEN_WIDTH * 0.5
-	);
-	Rect2f tmp, tmp2;
-	partition_rect_vert(state->menu_rect, 0.5, &state->menu_title_rect, &tmp);
-	partition_rect_vert(tmp, 1.0 / 3.0, &state->play_button_rect, &tmp2);
-	partition_rect_vert(tmp2, 0.5, &state->about_button_rect, &state->quit_button_rect);
-	state->mouse_pos = vec2f_new(0, 0);
+	state->mouse_down = false;
+	state->mouse_press = false;
+	state->board_rotate_slider = (Slider) {
+		.state = SLIDER_ON,
+	};
+	state->p2_slider = (Slider){
+		.state = SLIDER_ON,
+	};
+	state->p1_slider = (Slider) {
+		.state = SLIDER_ON,
+	};
+}
+
+static bool mouse_in_rect(State * state, Rect2f rect) {
+	return SDL_PointInRectFloat(&state->mouse_pos, &rect);
 }
 
 void state_process_event(State * state, const Event * event) {
@@ -27,40 +67,454 @@ void state_process_event(State * state, const Event * event) {
 		state->should_quit = true;
 		break;
 	case MOUSE_DOWN_EVENT:
-		state->bg_direction ^= 1;
-		if (SDL_PointInRectFloat(&state->mouse_pos, &state->quit_button_rect)) {
-			state->should_quit = true;
-		} else if (SDL_PointInRectFloat(&state->mouse_pos, &state->about_button_rect)) {
-			state->stage = STATE_STAGE_ABOUT;
-			SDL_Log("Entering about state");
-		}
+		state->mouse_down = true;
+		state->mouse_press = true;
 		break;
 	case MOUSE_MOVE_EVENT:
 		state->mouse_pos = event->as.mouse_move;
 		break;
 	case MOUSE_UP_EVENT:
+		state->mouse_down = false;
 		break;
 	}
 }
 
-StateUpdateResult state_update(State * state, f32 delta_time) {
-	if (state->should_quit)
-		return STATE_UPDATE_QUIT;
-	f32 accel = (state->bg_direction == 0 ? -1 : 1) * 150;
-	state->bg_speed = clampf(state->bg_speed + accel * delta_time, -50, 50);
-	state->bg_rect.x += state->bg_speed * delta_time;
-	state->bg_rect.y += state->bg_speed * delta_time;
-	if (state->bg_rect.x > state->bg_rect.w) {
-		state->bg_rect.x = 0;
-	} else if (state->bg_rect.x < 0) {
-		state->bg_rect.x = state->bg_rect.w;
+static bool state_is_menu(State * state) {
+	const u32 bitmask =
+		STATE_STAGE_TITLE |
+		STATE_STAGE_ABOUT |
+		STATE_STAGE_GAME_SETTINGS |
+		STATE_STAGE_ERR_MSG;
+	return (state->stage & bitmask) != 0;
+}
+
+static void state_stage_cleanup(State * state) {
+	switch (state->stage) {
+		case STATE_STAGE_GAME:
+			player_free(&state->game.p1);
+			player_free(&state->game.p2);
+			break;
+		case STATE_STAGE_TITLE:
+		case STATE_STAGE_ABOUT:
+		case STATE_STAGE_GAME_SETTINGS:
+		case STATE_STAGE_ERR_MSG:
+			break;
 	}
-	if (state->bg_rect.y > state->bg_rect.h) {
-		state->bg_rect.y = 0;
-	} else if (state->bg_rect.y < 0) {
-		state->bg_rect.y = state->bg_rect.h;
+}
+
+static void state_show_err_msg(State * state, Str msg) {
+	state_stage_cleanup(state);
+	state->err_msg = msg;
+	state->stage = STATE_STAGE_ERR_MSG;
+}
+
+static void state_start_game(State * state) {
+	state->game.board = INITIAL_CHESS_BOARD;
+	refresh_moves(&state->game.board, state->game.legal_moves);
+	state->board_view = WHITE_SIDE;
+	if (slider_status(&state->p1_slider)) { // human
+		player_init_human(&state->game.p1);
+	} else {
+		UciServer * server = SDL_malloc(sizeof(*server));
+		if (!server) {
+			state_show_err_msg(state, S("Should not allocate memory for server"));
+			return;
+		}
+		UciClient * client = SDL_malloc(sizeof(*client));
+		if (!client) {
+			SDL_free(server);
+			state_show_err_msg(state, S("Could not allocate memory for client"));
+			return;
+		}
+		const char * cmd[] = { "stockfish", NULL };
+		if (!uci_server_start(server, cmd)) {
+			SDL_free(server);
+			SDL_free(client);
+			state_show_err_msg(state, S("Could not start UCI server"));
+			return;
+		}
+		uci_client_init(client);
+		player_init_bot(&state->game.p1, server, client);
+	}
+	if (slider_status(&state->p2_slider)) { // human
+		player_init_human(&state->game.p2);
+	} else {
+		UciServer * server = SDL_malloc(sizeof(*server));
+		if (!server) {
+			state_show_err_msg(state, S("Should not allocate memory for server"));
+			return;
+		}
+		UciClient * client = SDL_malloc(sizeof(*client));
+		if (!client) {
+			SDL_free(server);
+			state_show_err_msg(state, S("Could not allocate memory for client"));
+			return;
+		}
+		const char * cmd[] = { "stockfish", NULL };
+		if (!uci_server_start(server, cmd)) {
+			SDL_free(server);
+			SDL_free(client);
+			state_show_err_msg(state, S("Could not start UCI server"));
+			return;
+		}
+		uci_client_init(client);
+		player_init_bot(&state->game.p2, server, client);
+	}
+	state->game.state = GAME_STATE_IDLE;
+	state->stage = STATE_STAGE_GAME;
+}
+
+static u8 state_mouse_board_idx(State * state) {
+	Vec2f a = vec2f_sub(state->mouse_pos, rect2f_pos(BOARD_RECT));
+	a = vec2f_div(a, vec2f_new(BOARD_SLOT_WIDTH, BOARD_SLOT_WIDTH));
+	if (a.x < 0.0f || a.x >= 8.0 || a.y < 0.0 || a.y >= 8.0)
+		return INVALID_PIECE_IDX;
+	int x = (int)a.x;
+	int y = (int)a.y;
+	if (state->game.board.side == WHITE_SIDE) {
+		x = 7 - x;
+		y = 7 - y;
+	}
+	return (u8)(y * 8 + x);
+}
+
+static Player * state_current_player(State * state) {
+	return state->game.board.side == WHITE_SIDE ? &state->game.p1 : &state->game.p2;
+}
+
+static StateUpdateResult state_menu_process_mouse_press(State * state) {
+	if (mouse_in_rect(state, get_slot_rect(QUIT_BUTTON_SLOT))) {
+		return STATE_UPDATE_QUIT;
 	}
 	return STATE_UPDATE_CONTINUE;
+}
+
+static StateUpdateResult state_process_mouse_press(State * state, f32 elapsed_time) {
+	if (state_is_menu(state)) {
+		StateUpdateResult su = state_menu_process_mouse_press(state);
+		if (su != STATE_UPDATE_CONTINUE)
+			return su;
+	}
+	switch (state->stage) {
+	case STATE_STAGE_TITLE:
+		if (mouse_in_rect(state, get_slot_rect(ABOUT_BUTTON_SLOT))) { /* ABOUT */
+			state->stage = STATE_STAGE_ABOUT;
+			state->bg_direction ^= 1;
+		} else if (mouse_in_rect(state, get_slot_rect(PLAY_BUTTON_SLOT))) { /* PLAY */
+			state->stage = STATE_STAGE_GAME_SETTINGS;
+			state->bg_direction ^= 1;
+		}
+		break;
+	case STATE_STAGE_ABOUT:
+		if (mouse_in_rect(state, get_slot_rect(BACK_BUTTON_SLOT))) { /* BACK */
+			state->stage = STATE_STAGE_TITLE;
+			state->bg_direction ^= 1;
+		}
+		break;
+	case STATE_STAGE_GAME_SETTINGS:
+		if (mouse_in_rect(state, get_slot_rect(BACK_BUTTON_SLOT))) { /* BACK */
+			SDL_zero(state->settings);
+			state->stage = STATE_STAGE_TITLE;
+			state->bg_direction ^= 1;
+		}
+		Rect2f rect = get_slot_rect(MENU_TITLE_SLOT + 3);
+		Rect2f slider;
+		partition_rect_horiz(rect, 0.5, NULL, &slider);
+		if (mouse_in_rect(state, slider)) {
+			slider_toggle(&state->board_rotate_slider, elapsed_time);
+		}
+
+		rect = get_slot_rect(MENU_TITLE_SLOT + 2);
+		partition_rect_horiz(rect, 0.5, NULL, &slider);
+		if (mouse_in_rect(state, slider)) {
+			slider_toggle(&state->p2_slider, elapsed_time);
+		}
+
+		rect = get_slot_rect(MENU_TITLE_SLOT + 1);
+		partition_rect_horiz(rect, 0.5, NULL, &slider);
+		if (mouse_in_rect(state, slider)) {
+			slider_toggle(&state->p1_slider, elapsed_time);
+		}
+		if (mouse_in_rect(state, get_slot_rect(START_BUTTON_SLOT))) {
+			state_start_game(state);
+		}
+		break;
+	case STATE_STAGE_GAME: {
+		Player * p = state_current_player(state);
+		if (p->type == PLAYER_HUMAN) {
+			u8 idx = state_mouse_board_idx(state);
+			if (idx != INVALID_PIECE_IDX) {
+				BoardSlot * slot = &state->game.board.slots[idx];
+				if (slot->has_piece && slot->side == state->game.board.side) {
+					p->as.human.held_idx = idx;
+					p->as.human.cursor_offset =
+						vec2f_new(
+							- state->mouse_pos.x + floor_to_nearest(state->mouse_pos.x, BOARD_SLOT_WIDTH),
+							- state->mouse_pos.y + floor_to_nearest(state->mouse_pos.y, BOARD_SLOT_WIDTH));
+				}
+			}
+		}
+		break;
+	}
+	case STATE_STAGE_ERR_MSG:
+		if (mouse_in_rect(state, get_slot_rect(BACK_BUTTON_SLOT))) {
+			state->stage = STATE_STAGE_TITLE;
+		}
+		break;
+	}
+	return STATE_UPDATE_CONTINUE;
+}
+
+void player_init_human(Player * player) {
+	player->type = PLAYER_HUMAN;
+	player->as.human.held_idx = INVALID_PIECE_IDX;
+}
+
+void player_init_bot(Player * player, UciServer * server, UciClient * client) {
+	player->type = PLAYER_BOT;
+	player->as.bot.server = server;
+	player->as.bot.client = client;
+}
+
+void player_free(Player * player) {
+	switch (player->type) {
+	case PLAYER_HUMAN:
+		break;
+	case PLAYER_BOT:
+		uci_client_free(player->as.bot.client);
+		uci_server_close(player->as.bot.server);
+		SDL_free(player->as.bot.client);
+		SDL_free(player->as.bot.server);
+		break;
+	}
+}
+
+/* request the player to make the next move */
+void player_request_move(State * state, Player * player) {
+	switch (player->type) {
+	case PLAYER_HUMAN:
+		break;
+	case PLAYER_BOT:
+		player->as.bot.req = (UciMoveRequestData) {
+			.board = &state->game.board,
+			.timeout_ms = 1000,
+		};
+		uci_client_request_move(player->as.bot.client, &player->as.bot.req);
+	}
+}
+
+PlayerPollResult player_poll(State * state, Player * player) {
+	PlayerPollResult ret = { .type = PLAYER_POLL_CONTINUE };
+	switch (player->type) {
+		case PLAYER_BOT: {
+			UciClientPollResult poll = uci_poll_client(player->as.bot.client, player->as.bot.server);
+			switch (poll) {
+			case UCI_POLL_CLIENT_CONTINUE:
+				break;
+			case UCI_POLL_CLIENT_QUIT:
+				ret.type = PLAYER_POLL_QUIT;
+				break;
+			case UCI_POLL_CLIENT_OOM:
+			case UCI_POLL_CLIENT_INVALID_DATA:
+				ret.type = PLAYER_POLL_ERROR;
+				break;
+			case UCI_POLL_CLIENT_MOVE_RESPONSE:
+				ret.type = PLAYER_POLL_MOVED;
+				ret.as.moved.from = player->as.bot.req.out_from;
+				ret.as.moved.to = player->as.bot.req.out_to;
+				break;
+			}
+			break;
+		}
+		case PLAYER_HUMAN: {
+			if (player->as.human.held_idx != INVALID_PIECE_IDX && !state->mouse_down) { // release detected
+				u8 from = player->as.human.held_idx;
+				player->as.human.held_idx = INVALID_PIECE_IDX;
+				u8 to = state_mouse_board_idx(state);
+				if (to != INVALID_PIECE_IDX) {
+					ret.type = PLAYER_POLL_MOVED;
+					ret.as.moved.from = from;
+					ret.as.moved.to = to;
+				}
+			}
+		}
+		break;
+	}
+	return ret;
+}
+
+void state_update_game(State * state) {
+	Player * p = state_current_player(state);
+	switch (state->game.state) {
+	case GAME_STATE_IDLE:
+		player_request_move(state, p);
+		state->game.state = GAME_STATE_POLLING;
+		break;
+	case GAME_STATE_POLLING: {
+		PlayerPollResult poll = player_poll(state, p);
+		switch (poll.type) {
+			case PLAYER_POLL_CONTINUE:
+				break;
+			case PLAYER_POLL_ERROR:
+				state_show_err_msg(state, S("Unexpected Client Error"));
+				break;
+			case PLAYER_POLL_QUIT:
+				state_show_err_msg(state, S("Client Disconnect"));
+				break;
+			case PLAYER_POLL_MOVED: {
+				ChessBoard * board = &state->game.board;
+				LegalBoardMoves moves = state->game.legal_moves[poll.as.moved.from];
+				if (!legal_board_moves_contains_idx(moves, poll.as.moved.to)) {
+					if (p->type == PLAYER_BOT) {
+						state_show_err_msg(state, S("Bot Made Invalid Move"));
+						SDL_Log("Invalid move %u, %u", poll.as.moved.from, poll.as.moved.to);
+					}
+					break;
+				}
+				board_make_move(board, poll.as.moved.from, poll.as.moved.to);
+				LegalBoardMoves comp = refresh_moves(board, state->game.legal_moves);
+				if (comp == 0)
+					state->game.state = GAME_STATE_FINISHED;
+				if (slider_status(&state->board_rotate_slider)) {
+					state->board_view ^= 1;
+				}
+				state->game.state = GAME_STATE_IDLE;
+				break;
+			}
+		}
+		break;
+	}
+	case GAME_STATE_FINISHED:
+		break;
+	}
+}
+
+StateUpdateResult state_update(State * state, f32 elapsed_time, f32 delta_time) {
+	if (state->should_quit) {
+		state_stage_cleanup(state);
+		return STATE_UPDATE_QUIT;
+	}
+	if (state_is_menu(state)) {
+		f32 accel = (state->bg_direction == 0 ? -1 : 1) * 150;
+		state->bg_speed = clampf(state->bg_speed + accel * delta_time, -50, 50);
+		state->bg_rect.x += state->bg_speed * delta_time;
+		state->bg_rect.y += state->bg_speed * delta_time;
+		if (state->bg_rect.x > state->bg_rect.w) {
+			state->bg_rect.x = 0;
+		} else if (state->bg_rect.x < 0) {
+			state->bg_rect.x = state->bg_rect.w;
+		}
+		if (state->bg_rect.y > state->bg_rect.h) {
+			state->bg_rect.y = 0;
+		} else if (state->bg_rect.y < 0) {
+			state->bg_rect.y = state->bg_rect.h;
+		}
+	}
+	if (state->mouse_press) {
+		state->mouse_press = false;
+		StateUpdateResult update = state_process_mouse_press(state, elapsed_time);
+		if (update != STATE_UPDATE_CONTINUE)
+			return update;
+	}
+	switch (state->stage) {
+	case STATE_STAGE_GAME_SETTINGS:
+		slider_update(&state->p1_slider, elapsed_time);
+		slider_update(&state->p2_slider, elapsed_time);
+		slider_update(&state->board_rotate_slider, elapsed_time);
+		break;
+	case STATE_STAGE_GAME: {
+		state_update_game(state);
+		break;
+	}
+	default:
+		break;
+	}
+	return STATE_UPDATE_CONTINUE;
+}
+
+bool slider_status(Slider * slider) {
+	switch (slider->state) {
+	case SLIDER_ON:
+	case SLIDER_OFF_TO_ON:
+		return true;
+	case SLIDER_OFF:
+	case SLIDER_ON_TO_OFF:
+		return false;
+	}
+}
+
+void slider_toggle(Slider * slider, f32 elapsed_time) {
+	switch (slider->state) {
+	case SLIDER_ON:
+		slider->state = SLIDER_ON_TO_OFF;
+		slider->transition.initial_time = elapsed_time;
+		slider->transition.time_diff = 0;
+		break;
+	case SLIDER_OFF:
+		slider->state = SLIDER_OFF_TO_ON;
+		slider->transition.initial_time = elapsed_time;
+		slider->transition.time_diff = 0;
+		break;
+	case SLIDER_OFF_TO_ON:
+		slider->state = SLIDER_ON_TO_OFF;
+		slider->transition.time_diff = SLIDER_MAX_SECONDS - slider->transition.time_diff;
+		slider->transition.initial_time = elapsed_time - slider->transition.time_diff;
+		break;
+	case SLIDER_ON_TO_OFF:
+		slider->state = SLIDER_OFF_TO_ON;
+		slider->transition.time_diff = SLIDER_MAX_SECONDS - slider->transition.time_diff;
+		slider->transition.initial_time = elapsed_time - slider->transition.time_diff;
+		break;
+	}
+}
+
+void slider_update(Slider * slider, f32 elapsed_time) {
+	switch (slider->state) {
+	case SLIDER_ON:
+	case SLIDER_OFF:
+		break;
+	case SLIDER_ON_TO_OFF:
+		slider->transition.time_diff = elapsed_time - slider->transition.initial_time;
+		if (slider->transition.time_diff >= SLIDER_MAX_SECONDS) {
+			slider->state = SLIDER_OFF;
+		}
+		break;
+	case SLIDER_OFF_TO_ON:
+		slider->transition.time_diff = elapsed_time - slider->transition.initial_time;
+		if (slider->transition.time_diff >= SLIDER_MAX_SECONDS) {
+			slider->state = SLIDER_ON;
+		}
+		break;
+	}
+}
+
+void slider_draw(Slider * slider, Display * display, TextureCache * cache, Rect2f rect, Texture * atlas) {
+	int frame;
+	switch (slider->state) {
+	case SLIDER_ON:
+		frame = 0;
+		break;
+	case SLIDER_OFF:
+		frame = 4;
+		break;
+	case SLIDER_ON_TO_OFF:
+		frame = (i32)(slider->transition.time_diff / SLIDER_SECONDS_PER_FRAME);
+		break;
+	case SLIDER_OFF_TO_ON:
+		frame = 4 - (i32)(slider->transition.time_diff / SLIDER_SECONDS_PER_FRAME);
+		break;
+	}
+	Rect2f src = rect2f_new(frame * 32, 0.0, 32.0, 12.0);
+	Rect2f dest;
+	dest.x = rect.x;
+	dest.y = rect.y;
+	dest.w = floor_to_nearest(rect.w, 32.0);
+	dest.h = rect.w * (12.0 / 32.0);
+	if (dest.h > rect.h) {
+		dest.h = floor_to_nearest(rect.h, 12.0);
+		dest.w = dest.h * (32.0 / 12.0);
+	}
+	SDL_RenderTexture(display->renderer, atlas, &src, &dest);
 }
 
 void draw_menu_bg(Display * display, TextureCache * cache, Rect2f rect) {
@@ -123,7 +577,6 @@ void draw_text(Str text, Display * display, TextureCache * cache, Rect2f rect) {
 	}
 	usize x = 0;
 	usize y = 0;
-
 	for (usize i = 0; i < text.size; ++i) {
 		char c = text.data[i];
 		if (c == '\n') {
@@ -139,10 +592,21 @@ void draw_text(Str text, Display * display, TextureCache * cache, Rect2f rect) {
 		if (SDL_isupper(c)) {
 			src_rect.x = (c - 'A') * 5.0;
 			src_rect.y = 0;
-		} else {
-			SDL_assert(SDL_islower(c));
+		} else if (SDL_islower(c)) {
 			src_rect.x = (c - 'a') * 5.0;
 			src_rect.y = 12.0;
+		} else {
+			src_rect.y = 24.0;
+			if (SDL_isdigit(c)) {
+				src_rect.x = (c - '0') * 5.0;
+			} else if (c == '?') {
+				src_rect.x = 10.0 * 5.0;
+			} else if (c == '!') {
+				src_rect.x = 11.0 * 5.0;
+			} else {
+				SDL_assert(c == '.');
+				src_rect.x = 12.0 * 5.0;
+			}
 		}
 		src_rect.w = 5.0;
 		src_rect.h = 12.0;
@@ -158,18 +622,136 @@ void draw_text(Str text, Display * display, TextureCache * cache, Rect2f rect) {
 	}
 }
 
-void state_draw(State * state, TextureCache * cache, Display * display) {
+void draw_menu_template(State * state, TextureCache * cache, Display * display) {
 	Texture * bgtx = texture_cache_lookup(cache, TEXTURE_ID_BOARD);
 	SDL_SetTextureScaleMode(bgtx, SDL_SCALEMODE_LINEAR);
 	SDL_RenderTextureTiled(display->renderer, bgtx, &state->bg_rect, state->bg_scale, NULL);
 	SDL_SetTextureScaleMode(bgtx, SDL_SCALEMODE_NEAREST);
-	draw_menu_bg(display, cache, state->menu_rect);
-	if (state->stage == STATE_STAGE_TITLE) {
-		draw_text(S("Chess Game"), display, cache, state->menu_title_rect);
-		draw_text(S("PLAY"), display, cache, state->play_button_rect);
-		draw_text(S("ABOUT"), display, cache, state->about_button_rect);
-		draw_text(S("QUIT"), display, cache, state->quit_button_rect);
-	} else {
-		draw_text(S("Made by\nAlex Adewole"), display, cache, state->menu_title_rect);
+	draw_menu_bg(display, cache, MENU_RECT);
+	draw_text(S("QUIT"), display, cache, get_slot_rect(QUIT_BUTTON_SLOT));
+}
+
+void state_draw_game_settings(State * state, TextureCache * cache, Display * display) {
+	draw_menu_template(state, cache, display);
+	Rect2f a, b, c;
+	draw_text(S("GAME SETTINGS"), display, cache, get_slot_rect(MENU_TITLE_SLOT));
+	a = get_slot_rect(MENU_TITLE_SLOT + 1);
+	partition_rect_horiz(a, 0.5, &b, &c);
+	draw_text(S("P1"), display, cache, b);
+	slider_draw(&state->p1_slider, display, cache,
+		c, texture_cache_lookup(cache, TEXTURE_ID_HUMAN_BOT_SLIDER));
+	a = get_slot_rect(MENU_TITLE_SLOT + 2);
+	partition_rect_horiz(a, 0.5, &b, &c);
+	draw_text(S("P2"), display, cache, b);
+	slider_draw(&state->p2_slider, display, cache,
+		c, texture_cache_lookup(cache, TEXTURE_ID_HUMAN_BOT_SLIDER));
+	a = get_slot_rect(MENU_TITLE_SLOT + 3);
+	partition_rect_horiz(a, 0.5, &b, &c);
+	draw_text(S("Rotate?"), display, cache, b);
+	slider_draw(&state->board_rotate_slider, display, cache,
+		c, texture_cache_lookup(cache, TEXTURE_ID_SLIDER));
+	draw_text(S("BACK"), display, cache, get_slot_rect(BACK_BUTTON_SLOT));
+	draw_menu_bg(display, cache, get_slot_rect(START_BUTTON_SLOT));
+	draw_text(S("START"), display, cache, get_slot_rect(START_BUTTON_SLOT));
+}
+
+void state_draw_game(State * state, TextureCache * cache, Display * display) {
+	Texture * board = texture_cache_lookup(cache, TEXTURE_ID_BOARD);
+	Rect2f board_rect = rect2f_new(
+		SCREEN_WIDTH * 0.1,
+		SCREEN_WIDTH * 0.1,
+		SCREEN_WIDTH * 0.8,
+		SCREEN_WIDTH * 0.8
+	);
+	f32 slot_width = board_rect.w / 8;
+	f32 piece_width = slot_width * (8.0 / 9.0);
+	SDL_FlipMode mode = state->board_view == WHITE_SIDE ? SDL_FLIP_NONE : SDL_FLIP_VERTICAL;
+	SDL_RenderTextureRotated(display->renderer, board, NULL, &board_rect, 0.0, NULL, mode);
+	Player * p = state_current_player(state);
+	if (p->type == PLAYER_HUMAN && p->as.human.held_idx != INVALID_PIECE_IDX) {
+		Texture * tx = texture_cache_lookup(cache, TEXTURE_ID_HOVER_SHADOW);
+		LegalBoardMoves moves = state->game.legal_moves[p->as.human.held_idx];
+		for (int y = 0; y < 8; ++y) {
+			for (int x = 0; x < 8; ++x) {
+				u8 sx = (u8)x;
+				u8 sy = (u8)y;
+				if (state->board_view == WHITE_SIDE) {
+					sx = 7 - sx;
+					sy = 7 - sy;
+				}
+				u8 idx = sy * 8 + sx;
+				if (idx == p->as.human.held_idx ||
+					legal_board_moves_contains_idx(moves, idx)) {
+					Rect2f rect = rect2f_new(
+						board_rect.x + x * slot_width,
+						board_rect.y + y * slot_width,
+						piece_width,
+						piece_width
+					);
+					SDL_RenderTexture(display->renderer, tx, NULL, &rect);
+				}
+			}
+		}
+	}
+	for (int y = 0; y < 8; ++y) {
+		for (int x = 0; x < 8; ++x) {
+			u8 sx = (u8)x;
+			u8 sy = (u8)y;
+			if (state->board_view == WHITE_SIDE) {
+				sx = 7 - sx;
+				sy = 7 - sy;
+			}
+			u8 idx = sy * 8 + sx;
+			if (p->type == PLAYER_HUMAN && p->as.human.held_idx == idx)
+				continue;
+			BoardSlot * slot = &state->game.board.slots[idx];
+			Texture * tx = texture_cache_lookup_slot(cache, slot);
+			if (!tx) continue;
+			Rect2f rect = rect2f_new(
+				board_rect.x + x * slot_width,
+				board_rect.y + y * slot_width,
+				piece_width,
+				piece_width
+			);
+			SDL_RenderTexture(display->renderer, tx, NULL, &rect);
+		}
+	}
+	if (p->type == PLAYER_HUMAN && p->as.human.held_idx != INVALID_PIECE_IDX) {
+		BoardSlot * slot = &state->game.board.slots[p->as.human.held_idx];
+		Texture * tx = texture_cache_lookup_slot(cache, slot);
+		Rect2f rect = rect2f_new(state->mouse_pos.x, state->mouse_pos.y, BOARD_SLOT_WIDTH, BOARD_SLOT_WIDTH);
+		rect.x += p->as.human.cursor_offset.x;
+		rect.y += p->as.human.cursor_offset.y;
+		SDL_RenderTexture(display->renderer, tx, NULL, &rect);
+	}
+}
+
+void state_draw(State * state, TextureCache * cache, Display * display) {
+	if (state_is_menu(state)) {
+		draw_menu_template(state, cache, display);
+	}
+	switch (state->stage) {
+		case STATE_STAGE_TITLE:
+			draw_text(S("CHESS GAME"), display, cache, get_slot_rect(MENU_TITLE_SLOT));
+			draw_text(S("PLAY"), display, cache, get_slot_rect(PLAY_BUTTON_SLOT));
+			draw_text(S("ABOUT"), display, cache, get_slot_rect(ABOUT_BUTTON_SLOT));
+			break;
+		case STATE_STAGE_ABOUT:
+			draw_text(S("Made by"), display, cache, get_slot_rect(MENU_TITLE_SLOT));
+			draw_text(S("Alex Adewole"), display, cache, get_slot_rect(MENU_TITLE_SLOT + 1));
+			draw_text(S("BACK"), display, cache, get_slot_rect(BACK_BUTTON_SLOT));
+			break;
+		case STATE_STAGE_GAME_SETTINGS: {
+			state_draw_game_settings(state, cache, display);
+			break;
+		}
+		case STATE_STAGE_GAME: {
+			state_draw_game(state, cache, display);
+			break;
+		case STATE_STAGE_ERR_MSG:
+			draw_text(S("BACK"), display, cache, get_slot_rect(BACK_BUTTON_SLOT));
+			draw_text(state->err_msg, display, cache, get_slot_rect(MENU_TITLE_SLOT + 1));
+			break;
+		}
 	}
 }

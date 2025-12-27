@@ -10,6 +10,7 @@ void sigint(int _) {
 
 LegalBoardMoves refresh_moves(ChessBoard * board, LegalBoardMoves moves[static 64]) {
 	LegalBoardMoves composite_moves = 0;
+	SDL_memset(moves, 0, sizeof(*moves) * 64);
 	for (u8 i = 0; i < 64; ++i) {
 		BoardSlot * slot = &board->slots[i];
 		if (slot->has_piece && slot->side == board->side) {

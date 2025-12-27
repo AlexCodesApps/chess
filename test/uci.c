@@ -7,7 +7,7 @@ __ssize_t getline(char **restrict lineptr, size_t *restrict n,
 			   FILE *restrict stream);
 
 int main(void) {
-	// NOLINTBEGIN
+	/* NOLINTBEGIN */
 	UciServer server;
 	const char * const args[] = { "cat", NULL };
 	if (!uci_server_start(&server, args)) {
@@ -39,5 +39,5 @@ int main(void) {
 		}
 	}
 	uci_server_close(&server);
-	// NOLINTEND
+	/* NOLINTEND */
 }
