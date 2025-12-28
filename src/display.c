@@ -19,6 +19,11 @@ bool display_open(Display * display) {
 						0, &display->window, &display->renderer)) {
 		return false;
 	}
+	if (!SDL_SetRenderVSync(display->renderer, SDL_RENDERER_VSYNC_ADAPTIVE)) {
+		SDL_DestroyRenderer(display->renderer);
+		SDL_DestroyWindow(display->window);
+		return false;
+	}
 	if (!SDL_SetRenderScale(display->renderer, scale, scale)) {
 		SDL_DestroyRenderer(display->renderer);
 		SDL_DestroyWindow(display->window);

@@ -107,8 +107,11 @@ PlayerPollResult player_poll(State * state, Player * player);
 typedef enum {
 	GAME_STATE_IDLE,
 	GAME_STATE_POLLING,
+	GAME_STATE_MOVING,
 	GAME_STATE_FINISHED,
 } GameState;
+
+#define PIECE_ANIMATION_SPAN 0.1
 
 struct State {
 	struct {
@@ -117,6 +120,12 @@ struct State {
 		Player p1;
 		Player p2;
 		GameState state : 2;
+		struct {
+			f32 initial_time;
+			f32 time_diff;
+			u8 from;
+			u8 to;
+		} animation;
 	} game;
 	Slider p1_slider;
 	Slider p2_slider;

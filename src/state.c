@@ -111,7 +111,20 @@ static void state_show_err_msg(State * state, Str msg) {
 static void state_start_game(State * state) {
 	state->game.board = INITIAL_CHESS_BOARD;
 	refresh_moves(&state->game.board, state->game.legal_moves);
-	state->board_view = WHITE_SIDE;
+	if (slider_status(&state->board_rotate_slider)) {
+		state->board_view = WHITE_SIDE;
+	} else {
+		switch ((u32)slider_status(&state->p1_slider) << 1 | (u32)slider_status(&state->p2_slider)) {
+			case 0b00:
+			case 0b10:
+			case 0b11:
+				state->board_view = WHITE_SIDE;
+				break;
+			case 0b01:
+				state->board_view = BLACK_SIDE;
+				break;
+		}
+	}
 	if (slider_status(&state->p1_slider)) { // human
 		player_init_human(&state->game.p1);
 	} else {
@@ -297,7 +310,7 @@ void player_request_move(State * state, Player * player) {
 	case PLAYER_BOT:
 		player->as.bot.req = (UciMoveRequestData) {
 			.board = &state->game.board,
-			.timeout_ms = 1000,
+			.timeout_ms = 500,
 		};
 		uci_client_request_move(player->as.bot.client, &player->as.bot.req);
 	}
@@ -343,7 +356,19 @@ PlayerPollResult player_poll(State * state, Player * player) {
 	return ret;
 }
 
-void state_update_game(State * state) {
+void state_game_make_move(State * state, u8 from, u8 to) {
+	ChessBoard * board = &state->game.board;
+	board_make_move(board, from, to);
+	LegalBoardMoves comp = refresh_moves(board, state->game.legal_moves);
+	if (comp == 0)
+		state->game.state = GAME_STATE_FINISHED;
+	if (slider_status(&state->board_rotate_slider)) {
+		state->board_view ^= 1;
+	}
+	state->game.state = GAME_STATE_IDLE;
+}
+
+void state_update_game(State * state, f32 elapsed_time) {
 	Player * p = state_current_player(state);
 	switch (state->game.state) {
 	case GAME_STATE_IDLE:
@@ -371,19 +396,27 @@ void state_update_game(State * state) {
 					}
 					break;
 				}
-				board_make_move(board, poll.as.moved.from, poll.as.moved.to);
-				LegalBoardMoves comp = refresh_moves(board, state->game.legal_moves);
-				if (comp == 0)
-					state->game.state = GAME_STATE_FINISHED;
-				if (slider_status(&state->board_rotate_slider)) {
-					state->board_view ^= 1;
+				if (p->type == PLAYER_HUMAN) {
+					state_game_make_move(state, poll.as.moved.from, poll.as.moved.to);
+				} else {
+					state->game.animation.initial_time = elapsed_time;
+					state->game.animation.time_diff = 0.0;
+					state->game.animation.from = poll.as.moved.from;
+					state->game.animation.to = poll.as.moved.to;
+					state->game.state = GAME_STATE_MOVING;
 				}
-				state->game.state = GAME_STATE_IDLE;
 				break;
 			}
 		}
 		break;
 	}
+	case GAME_STATE_MOVING:
+		state->game.animation.time_diff = elapsed_time - state->game.animation.initial_time;
+		if (state->game.animation.time_diff >= PIECE_ANIMATION_SPAN) {
+			state_game_make_move(state, state->game.animation.from, state->game.animation.to);
+			state->game.state = GAME_STATE_IDLE;
+		}
+		break;
 	case GAME_STATE_FINISHED:
 		break;
 	}
@@ -423,7 +456,7 @@ StateUpdateResult state_update(State * state, f32 elapsed_time, f32 delta_time) 
 		slider_update(&state->board_rotate_slider, elapsed_time);
 		break;
 	case STATE_STAGE_GAME: {
-		state_update_game(state);
+		state_update_game(state, elapsed_time);
 		break;
 	}
 	default:
@@ -668,7 +701,9 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 	SDL_FlipMode mode = state->board_view == WHITE_SIDE ? SDL_FLIP_NONE : SDL_FLIP_VERTICAL;
 	SDL_RenderTextureRotated(display->renderer, board, NULL, &board_rect, 0.0, NULL, mode);
 	Player * p = state_current_player(state);
-	if (p->type == PLAYER_HUMAN && p->as.human.held_idx != INVALID_PIECE_IDX) {
+	bool p_has_piece = p->type == PLAYER_HUMAN && p->as.human.held_idx != INVALID_PIECE_IDX;
+	bool playing_animation = state->game.state == GAME_STATE_MOVING;
+	if (p_has_piece) {
 		Texture * tx = texture_cache_lookup(cache, TEXTURE_ID_HOVER_SHADOW);
 		LegalBoardMoves moves = state->game.legal_moves[p->as.human.held_idx];
 		for (int y = 0; y < 8; ++y) {
@@ -685,8 +720,8 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 					Rect2f rect = rect2f_new(
 						board_rect.x + x * slot_width,
 						board_rect.y + y * slot_width,
-						piece_width,
-						piece_width
+						slot_width,
+						slot_width
 					);
 					SDL_RenderTexture(display->renderer, tx, NULL, &rect);
 				}
@@ -702,7 +737,9 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 				sy = 7 - sy;
 			}
 			u8 idx = sy * 8 + sx;
-			if (p->type == PLAYER_HUMAN && p->as.human.held_idx == idx)
+			if (p_has_piece && p->as.human.held_idx == idx)
+				continue;
+			else if (playing_animation && state->game.animation.from == idx)
 				continue;
 			BoardSlot * slot = &state->game.board.slots[idx];
 			Texture * tx = texture_cache_lookup_slot(cache, slot);
@@ -716,14 +753,38 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 			SDL_RenderTexture(display->renderer, tx, NULL, &rect);
 		}
 	}
-	if (p->type == PLAYER_HUMAN && p->as.human.held_idx != INVALID_PIECE_IDX) {
-		BoardSlot * slot = &state->game.board.slots[p->as.human.held_idx];
-		Texture * tx = texture_cache_lookup_slot(cache, slot);
-		Rect2f rect = rect2f_new(state->mouse_pos.x, state->mouse_pos.y, BOARD_SLOT_WIDTH, BOARD_SLOT_WIDTH);
-		rect.x += p->as.human.cursor_offset.x;
-		rect.y += p->as.human.cursor_offset.y;
-		SDL_RenderTexture(display->renderer, tx, NULL, &rect);
+	u8 idx;
+	Vec2f pos;
+	if (p_has_piece) {
+		idx = p->as.human.held_idx;
+		pos = vec2f_add(state->mouse_pos,
+				p->as.human.cursor_offset);
+	} else if (playing_animation) {
+		idx = state->game.animation.from;
+		u8 idx2 = state->game.animation.to;
+		int x = idx % 8;
+		int y = idx / 8;
+		int x2 = idx2 % 8;
+		int y2 = idx2 / 8;
+		if (state->board_view == WHITE_SIDE) {
+			x = 7 - x;
+			y = 7 - y;
+			x2 = 7 - x2;
+			y2 = 7 - y2;
+		}
+		f32 dx = ((f32)x2 - (f32)x) * (state->game.animation.time_diff / PIECE_ANIMATION_SPAN);
+		f32 dy = ((f32)y2 - (f32)y) * (state->game.animation.time_diff / PIECE_ANIMATION_SPAN);
+
+		f32 fx = ((f32)x + dx) * slot_width + board_rect.x;
+		f32 fy = ((f32)y + dy) * slot_width + board_rect.y;
+		pos = vec2f_new(fx, fy);
+	} else {
+		return;
 	}
+	BoardSlot * slot = &state->game.board.slots[idx];
+	Texture * tx = texture_cache_lookup_slot(cache, slot);
+	Rect2f rect = rect2f_new(pos.x, pos.y, piece_width, piece_width);
+	SDL_RenderTexture(display->renderer, tx, NULL, &rect);
 }
 
 void state_draw(State * state, TextureCache * cache, Display * display) {
