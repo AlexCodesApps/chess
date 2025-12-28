@@ -143,13 +143,11 @@ static bool legal_board_moves_contains_idx(LegalBoardMoves moves, u8 idx) {
 bool board_has_checks(ChessBoard * board, ChessSide side);
 
 /* INVARIANT: from != to */
-BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 to);
-/* INVARIANT: from != to */
 BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 to);
 
-void board_set_promotion_type(ChessBoard * board, ChessPiece piece);
+usize board_count_moves(ChessBoard * board, usize depth);
 
-void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_move);
+void board_set_promotion_type(ChessBoard * board, ChessPiece piece);
 
 /* INVARIANT: Index must be to actual piece */
 /* INVARIANT: Kings should never be capturable or corruption of state occurs */

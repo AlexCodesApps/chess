@@ -230,8 +230,10 @@ static Player * state_current_player(State * state) {
 
 void state_game_next_turn(State * state) {
 	LegalBoardMoves comp = refresh_moves(&state->game.board, state->game.legal_moves);
-	if (comp == 0)
+	if (comp == 0) {
 		state->game.state = GAME_STATE_FINISHED;
+		return;
+	}
 	if (slider_status(&state->board_rotate_slider)) {
 		state->board_view ^= 1;
 	}
@@ -497,7 +499,6 @@ void state_update_game(State * state, f32 elapsed_time) {
 		state->game.animation.time_diff = elapsed_time - state->game.animation.initial_time;
 		if (state->game.animation.time_diff >= PIECE_ANIMATION_SPAN) {
 			state_game_make_move(state, state->game.animation.from, state->game.animation.to);
-			state->game.state = GAME_STATE_IDLE;
 		}
 		break;
 	case GAME_STATE_FINISHED:

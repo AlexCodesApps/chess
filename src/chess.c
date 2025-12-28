@@ -69,7 +69,8 @@ static bool king_at_idx(ChessBoard * board, u8 idx, ChessSide side) {
 	return slot->piece == CHESS_KING && slot->side == side;
 }
 
-BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 to) {
+/* INVARIANT: from != to */
+static BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 to) {
 	BoardMoveResult result = {
 		.from = from,
 		.to = to,
@@ -151,19 +152,7 @@ BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 to) {
 	return result;
 }
 
-BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 to) {
-	BoardMoveResult result = board_make_move_internal(board, from, to);
-	if (board->side == BLACK_SIDE)
-		++board->turn_count;
-	if (result.capture || board->slots[result.to].piece == CHESS_PAWN)
-		board->fifty_mv_rule = 0;
-	else
-		++board->fifty_mv_rule;
-	board->side ^= 1;
-	return result;
-}
-
-void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_move) {
+static void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_move) {
 	board->opt_pawn = last_move.last_opt_pawn;
 	transfer_to_slot(board, last_move.to, last_move.from);
 	if (board->slots[last_move.from].piece == CHESS_KING) {
@@ -197,6 +186,41 @@ void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_move) {
 	if (last_move.cancelled_qs_castle) {
 		board->sides[board->side].qs_castle_ok = true;
 	}
+}
+
+BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 to) {
+	BoardMoveResult result = board_make_move_internal(board, from, to);
+	if (board->side == BLACK_SIDE)
+		++board->turn_count;
+	if (result.capture || board->slots[result.to].piece == CHESS_PAWN)
+		board->fifty_mv_rule = 0;
+	else
+		++board->fifty_mv_rule;
+	board->side ^= 1;
+	return result;
+}
+
+usize board_count_moves(ChessBoard * board, usize depth) {
+	if (depth == 0)
+		return 1;
+	usize count = 0;
+	for (u8 i = 0; i < 64; ++i) {
+		BoardSlot * slot = &board->slots[i];
+		if (!slot->has_piece || slot->side != board->side) {
+			continue;
+		}
+		LegalBoardMoves moves = board_get_legal_moves_for_piece(board, i);
+		for (u8 j = 0; j < 64; ++j) {
+			if (legal_board_moves_contains_idx(moves, j)) {
+				BoardMoveResult res = board_make_move_internal(board, i, j);
+				board->side ^= 1;
+				count += board_count_moves(board, depth - 1);
+				board->side ^= 1;
+				board_unmake_move_internal(board, res);
+			}
+		}
+	}
+	return count;
 }
 
 static bool king_in_bishop_LOS(const ChessBoard * const board, const Vec2i * kpos, const Vec2i * dpos, ChessSide side) {

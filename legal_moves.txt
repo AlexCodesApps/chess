@@ -1,0 +1,6 @@
+board at [1] = 20 possible moves
+board at [2] = 400 possible moves
+board at [3] = 8902 possible moves
+board at [4] = 197281 possible moves
+board at [5] = 4865609 possible moves
+board at [6] = 119060324 possible moves
