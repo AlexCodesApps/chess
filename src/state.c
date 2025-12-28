@@ -56,7 +56,7 @@ static inline Rect2f get_slot_rect(int slot) {
 	return rect2f_new(SLOT_X, SLOT_HEIGHT * slot, SLOT_WIDTH, SLOT_HEIGHT);
 }
 
-LegalBoardMoves refresh_moves(ChessBoard * board, LegalBoardMoves moves[64]) {
+static LegalBoardMoves refresh_moves(ChessBoard * board, LegalBoardMoves moves[64]) {
 	LegalBoardMoves composite_moves = 0;
 	SDL_memset(moves, 0, sizeof(*moves) * 64);
 	for (u8 i = 0; i < 64; ++i) {
@@ -239,9 +239,10 @@ void state_game_next_turn(State * state) {
 }
 
 void state_game_make_move(State * state, u8 from, u8 to) {
+	Player * p = state_current_player(state);
 	BoardMoveResult result = board_make_move(&state->game.board, from, to);
 	if (result.promotion) {
-		u8 piece = player_request_promotion(state, state_current_player(state), to);
+		u8 piece = player_request_promotion(state, p, to);
 		if (piece == PROMOTION_REQUEST_ERROR) {
 			state_show_err_msg(state, S("Client error"));
 			return;

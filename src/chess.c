@@ -278,7 +278,7 @@ bool board_has_checks(ChessBoard * const board, ChessSide const side) {
 				return true;
 			goto no_check;
 		case CHESS_KING:
-			if (absi(dpos.x <= 1) && absi(dpos.y <= 1))
+			if (absi(dpos.x) <= 1 && absi(dpos.y) <= 1)
 				return true;
 			goto no_check;
 		}

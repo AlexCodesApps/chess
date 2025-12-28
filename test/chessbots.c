@@ -4,11 +4,11 @@
 
 static int intr = 0;
 
-void sigint(int _) {
+static void sigint(int _) {
 	intr = 1;
 }
 
-LegalBoardMoves refresh_moves(ChessBoard * board, LegalBoardMoves moves[static 64]) {
+static LegalBoardMoves refresh_moves(ChessBoard * board, LegalBoardMoves moves[static 64]) {
 	LegalBoardMoves composite_moves = 0;
 	SDL_memset(moves, 0, sizeof(*moves) * 64);
 	for (u8 i = 0; i < 64; ++i) {
