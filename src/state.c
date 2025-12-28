@@ -19,6 +19,39 @@
 #define BOARD_RECT ((Rect2f){ SCREEN_WIDTH * 0.1, SCREEN_WIDTH * 0.1, SCREEN_WIDTH * 0.8, SCREEN_WIDTH * 0.8 })
 #define BOARD_SLOT_WIDTH ((SCREEN_WIDTH * 0.8) / 8.0)
 
+#define DIALOG_BOX_RECT \
+	((Rect2f){ \
+		BOARD_RECT.x, \
+		BOARD_RECT.y, \
+		BOARD_SLOT_WIDTH * 4 + 5, \
+		BOARD_SLOT_WIDTH + 2, \
+	})
+#define DIALOG_KNIGHT_RECT \
+	((Rect2f){ \
+		(SCREEN_WIDTH * 0.1) + 1, (SCREEN_WIDTH * 0.1) + 1, BOARD_SLOT_WIDTH, BOARD_SLOT_WIDTH \
+	})
+#define DIALOG_BISHOP_RECT \
+	((Rect2f){ \
+		(SCREEN_WIDTH * 0.1) + BOARD_SLOT_WIDTH + 2, \
+		(SCREEN_WIDTH * 0.1) + 1, \
+		BOARD_SLOT_WIDTH, \
+		BOARD_SLOT_WIDTH \
+	})
+#define DIALOG_ROOK_RECT \
+	((Rect2f) { \
+		(SCREEN_WIDTH * 0.1) + BOARD_SLOT_WIDTH * 2 + 3, \
+		(SCREEN_WIDTH * 0.1) + 1, \
+		BOARD_SLOT_WIDTH, \
+		BOARD_SLOT_WIDTH, \
+	})
+#define DIALOG_QUEEN_RECT \
+	((Rect2f) { \
+		(SCREEN_WIDTH * 0.1) + BOARD_SLOT_WIDTH * 3 + 4, \
+		(SCREEN_WIDTH * 0.1) + 1, \
+		BOARD_SLOT_WIDTH, \
+		BOARD_SLOT_WIDTH, \
+	})
+
 static inline Rect2f get_slot_rect(int slot) {
 	return rect2f_new(SLOT_X, SLOT_HEIGHT * slot, SLOT_WIDTH, SLOT_HEIGHT);
 }
@@ -143,7 +176,7 @@ static void state_start_game(State * state) {
 		if (!uci_server_start(server, cmd)) {
 			SDL_free(server);
 			SDL_free(client);
-			state_show_err_msg(state, S("Could not start UCI server"));
+			state_show_err_msg(state, S("Stockfish not found"));
 			return;
 		}
 		uci_client_init(client);
@@ -184,7 +217,7 @@ static u8 state_mouse_board_idx(State * state) {
 		return INVALID_PIECE_IDX;
 	int x = (int)a.x;
 	int y = (int)a.y;
-	if (state->game.board.side == WHITE_SIDE) {
+	if (state->board_view == WHITE_SIDE) {
 		x = 7 - x;
 		y = 7 - y;
 	}
@@ -195,18 +228,37 @@ static Player * state_current_player(State * state) {
 	return state->game.board.side == WHITE_SIDE ? &state->game.p1 : &state->game.p2;
 }
 
-static StateUpdateResult state_menu_process_mouse_press(State * state) {
-	if (mouse_in_rect(state, get_slot_rect(QUIT_BUTTON_SLOT))) {
-		return STATE_UPDATE_QUIT;
+void state_game_next_turn(State * state) {
+	LegalBoardMoves comp = refresh_moves(&state->game.board, state->game.legal_moves);
+	if (comp == 0)
+		state->game.state = GAME_STATE_FINISHED;
+	if (slider_status(&state->board_rotate_slider)) {
+		state->board_view ^= 1;
 	}
-	return STATE_UPDATE_CONTINUE;
+	state->game.state = GAME_STATE_IDLE;
+}
+
+void state_game_make_move(State * state, u8 from, u8 to) {
+	BoardMoveResult result = board_make_move(&state->game.board, from, to);
+	if (result.promotion) {
+		u8 piece = player_request_promotion(state, state_current_player(state), to);
+		if (piece == PROMOTION_REQUEST_ERROR) {
+			state_show_err_msg(state, S("Client error"));
+			return;
+		}
+		if (piece == PROMOTION_REQUEST_PENDING) {
+			return;
+		}
+		state->game.board.slots[to].piece = piece; // TODO: validate?
+	}
+	state_game_next_turn(state);
 }
 
 static StateUpdateResult state_process_mouse_press(State * state, f32 elapsed_time) {
 	if (state_is_menu(state)) {
-		StateUpdateResult su = state_menu_process_mouse_press(state);
-		if (su != STATE_UPDATE_CONTINUE)
-			return su;
+		if (mouse_in_rect(state, get_slot_rect(QUIT_BUTTON_SLOT))) {
+			return STATE_UPDATE_QUIT;
+		}
 	}
 	switch (state->stage) {
 	case STATE_STAGE_TITLE:
@@ -253,10 +305,29 @@ static StateUpdateResult state_process_mouse_press(State * state, f32 elapsed_ti
 		}
 		break;
 	case STATE_STAGE_GAME: {
+		if (state->game.promotion_dialog) {
+			ChessPiece piece;
+			if (mouse_in_rect(state, DIALOG_KNIGHT_RECT)) {
+				piece = CHESS_KNIGHT;
+			} else if (mouse_in_rect(state, DIALOG_BISHOP_RECT)) {
+				piece = CHESS_BISHOP;
+			} else if (mouse_in_rect(state, DIALOG_ROOK_RECT)) {
+				piece = CHESS_ROOK;
+			} else if (mouse_in_rect(state, DIALOG_QUEEN_RECT)) {
+				piece = CHESS_QUEEN;
+			} else {
+				return STATE_UPDATE_CONTINUE;
+			}
+			state->game.promotion_dialog = false;
+			state->game.board.slots[state->game.promotion_idx].piece = piece; // TODO: validate?
+			state_game_next_turn(state);
+			return STATE_UPDATE_CONTINUE;
+		}
 		Player * p = state_current_player(state);
 		if (p->type == PLAYER_HUMAN) {
 			u8 idx = state_mouse_board_idx(state);
 			if (idx != INVALID_PIECE_IDX) {
+				SDL_Log("Picked up piece");
 				BoardSlot * slot = &state->game.board.slots[idx];
 				if (slot->has_piece && slot->side == state->game.board.side) {
 					p->as.human.held_idx = idx;
@@ -316,6 +387,20 @@ void player_request_move(State * state, Player * player) {
 	}
 }
 
+u8 player_request_promotion(State * state, Player * player, u8 to) {
+	switch (player->type) {
+	case PLAYER_BOT:
+		if (!player->as.bot.req.out_did_promo) {
+			return PROMOTION_REQUEST_ERROR;
+		}
+		return player->as.bot.req.out_promo;
+	case PLAYER_HUMAN:
+		state->game.promotion_dialog = true;
+		state->game.promotion_idx = to;
+		return PROMOTION_REQUEST_PENDING;
+	}
+}
+
 PlayerPollResult player_poll(State * state, Player * player) {
 	PlayerPollResult ret = { .type = PLAYER_POLL_CONTINUE };
 	switch (player->type) {
@@ -356,19 +441,11 @@ PlayerPollResult player_poll(State * state, Player * player) {
 	return ret;
 }
 
-void state_game_make_move(State * state, u8 from, u8 to) {
-	ChessBoard * board = &state->game.board;
-	board_make_move(board, from, to);
-	LegalBoardMoves comp = refresh_moves(board, state->game.legal_moves);
-	if (comp == 0)
-		state->game.state = GAME_STATE_FINISHED;
-	if (slider_status(&state->board_rotate_slider)) {
-		state->board_view ^= 1;
-	}
-	state->game.state = GAME_STATE_IDLE;
-}
-
 void state_update_game(State * state, f32 elapsed_time) {
+	if (state->game.promotion_dialog) {
+		// TODO: implement
+		return;
+	}
 	Player * p = state_current_player(state);
 	switch (state->game.state) {
 	case GAME_STATE_IDLE:
@@ -391,8 +468,9 @@ void state_update_game(State * state, f32 elapsed_time) {
 				LegalBoardMoves moves = state->game.legal_moves[poll.as.moved.from];
 				if (!legal_board_moves_contains_idx(moves, poll.as.moved.to)) {
 					if (p->type == PLAYER_BOT) {
-						state_show_err_msg(state, S("Bot Made Invalid Move"));
 						SDL_Log("Invalid move %u, %u", poll.as.moved.from, poll.as.moved.to);
+						player_free(p);
+						player_init_human(p); // TODO, for debugging only
 					}
 					break;
 				}
@@ -407,6 +485,10 @@ void state_update_game(State * state, f32 elapsed_time) {
 				}
 				break;
 			}
+			case PLAYER_POLL_PROMOTION:
+				state->game.board.slots[poll.as.promo.to].piece = poll.as.promo.piece; // TODO, validate?
+				state_game_next_turn(state);
+				break;
 		}
 		break;
 	}
@@ -444,6 +526,7 @@ StateUpdateResult state_update(State * state, f32 elapsed_time, f32 delta_time) 
 		}
 	}
 	if (state->mouse_press) {
+		SDL_Log("Saw mouse press");
 		state->mouse_press = false;
 		StateUpdateResult update = state_process_mouse_press(state, elapsed_time);
 		if (update != STATE_UPDATE_CONTINUE)
@@ -696,7 +779,7 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 		SCREEN_WIDTH * 0.8,
 		SCREEN_WIDTH * 0.8
 	);
-	f32 slot_width = board_rect.w / 8;
+	f32 slot_width = board_rect.w / 8.0;
 	f32 piece_width = slot_width * (8.0 / 9.0);
 	SDL_FlipMode mode = state->board_view == WHITE_SIDE ? SDL_FLIP_NONE : SDL_FLIP_VERTICAL;
 	SDL_RenderTextureRotated(display->renderer, board, NULL, &board_rect, 0.0, NULL, mode);
@@ -753,7 +836,7 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 			SDL_RenderTexture(display->renderer, tx, NULL, &rect);
 		}
 	}
-	u8 idx;
+	u8 idx = INVALID_PIECE_IDX;
 	Vec2f pos;
 	if (p_has_piece) {
 		idx = p->as.human.held_idx;
@@ -778,13 +861,25 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 		f32 fx = ((f32)x + dx) * slot_width + board_rect.x;
 		f32 fy = ((f32)y + dy) * slot_width + board_rect.y;
 		pos = vec2f_new(fx, fy);
-	} else {
-		return;
 	}
-	BoardSlot * slot = &state->game.board.slots[idx];
-	Texture * tx = texture_cache_lookup_slot(cache, slot);
-	Rect2f rect = rect2f_new(pos.x, pos.y, piece_width, piece_width);
-	SDL_RenderTexture(display->renderer, tx, NULL, &rect);
+	if (idx != INVALID_PIECE_IDX) {
+		BoardSlot * slot = &state->game.board.slots[idx];
+		Texture * tx = texture_cache_lookup_slot(cache, slot);
+		Rect2f rect = rect2f_new(pos.x, pos.y, piece_width, piece_width);
+		SDL_RenderTexture(display->renderer, tx, NULL, &rect);
+	}
+	if (state->game.promotion_dialog) {
+		Texture * tx = texture_cache_lookup(cache, TEXTURE_ID_PROMOTION_DIALOG_BOX);
+		Texture * k = texture_cache_lookup(cache, state->game.board.side == BLACK_SIDE ? TEXTURE_ID_WHITE_KNIGHT : TEXTURE_ID_BLACK_KNIGHT);
+		Texture * b = texture_cache_lookup(cache, state->game.board.side == BLACK_SIDE ? TEXTURE_ID_WHITE_BISHOP : TEXTURE_ID_BLACK_BISHOP);
+		Texture * r = texture_cache_lookup(cache, state->game.board.side == BLACK_SIDE ? TEXTURE_ID_WHITE_ROOK : TEXTURE_ID_BLACK_KNIGHT);
+		Texture * q = texture_cache_lookup(cache, state->game.board.side == BLACK_SIDE ? TEXTURE_ID_WHITE_QUEEN : TEXTURE_ID_BLACK_QUEEN);
+		SDL_RenderTexture(display->renderer, tx, NULL, &DIALOG_BOX_RECT);
+		SDL_RenderTexture(display->renderer, k, NULL, &DIALOG_KNIGHT_RECT);
+		SDL_RenderTexture(display->renderer, b, NULL, &DIALOG_BISHOP_RECT);
+		SDL_RenderTexture(display->renderer, r, NULL, &DIALOG_ROOK_RECT);
+		SDL_RenderTexture(display->renderer, q, NULL, &DIALOG_QUEEN_RECT);
+	}
 }
 
 void state_draw(State * state, TextureCache * cache, Display * display) {

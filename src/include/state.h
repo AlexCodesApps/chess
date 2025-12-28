@@ -80,6 +80,7 @@ typedef struct {
 typedef enum {
 	PLAYER_POLL_CONTINUE,
 	PLAYER_POLL_MOVED,
+	PLAYER_POLL_PROMOTION,
 	PLAYER_POLL_ERROR,
 	PLAYER_POLL_QUIT,
 } PlayerPollResultType;
@@ -91,6 +92,10 @@ typedef struct {
 			u8 from;
 			u8 to;
 		} moved;
+		struct {
+			u8 to;
+			ChessPiece piece;
+		} promo;
 	} as;
 } PlayerPollResult;
 
@@ -100,6 +105,14 @@ void player_free(Player * player);
 
 /* request the player to make the next move */
 void player_request_move(State * state, Player * player);
+
+/* Ask the player for the promotion piece.
+ * if one is given now and not accepted, the player may not notify
+ * of a promotion again.
+ * */
+#define PROMOTION_REQUEST_PENDING ((u8)-1)
+#define PROMOTION_REQUEST_ERROR ((u8)-2)
+u8 player_request_promotion(State * state, Player * player, u8 to);
 
 /* returns true when a move has been made */
 PlayerPollResult player_poll(State * state, Player * player);
@@ -119,13 +132,15 @@ struct State {
 		ChessBoard board;
 		Player p1;
 		Player p2;
-		GameState state : 2;
 		struct {
 			f32 initial_time;
 			f32 time_diff;
 			u8 from;
 			u8 to;
 		} animation;
+		GameState state : 2;
+		bool promotion_dialog : 1;
+		u8 promotion_idx;
 	} game;
 	Slider p1_slider;
 	Slider p2_slider;
