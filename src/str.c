@@ -95,6 +95,10 @@ void str_builder_free(StrBuilder * builder) {
 }
 
 void str_builder_clear(StrBuilder * builder) {
+	builder->size = 0;
+}
+
+void str_builder_reset(StrBuilder * builder) {
 	str_builder_free(builder);
 	str_builder_init(builder);
 }

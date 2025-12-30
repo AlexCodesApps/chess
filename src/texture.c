@@ -1,5 +1,6 @@
 #include <SDL3_image/SDL_image.h>
 #include "include/texture.h"
+#include "include/str.h"
 
 const char * texture_id_to_asset_path(TextureId id) {
 	switch (id) {
@@ -84,15 +85,18 @@ static void surface_unlock_rw(SDL_Surface * sf) {
 bool texture_cache_init(TextureCache * cache, Renderer * renderer) {
 	const char * base = SDL_GetBasePath();
 	int i;
+	StrBuilder builder = str_builder_new();
 	for (i = 0; i < TEXTURE_ID_COUNT; ++i) {
 		const char * rel_path = texture_id_to_asset_path((TextureId)i);
-		char * path;
-		if (SDL_asprintf(&path, "%s/%s", base, rel_path) < 0) {
+		bool ok = str_builder_append_str(&builder, str_from_cstr(base));
+		ok = ok && str_builder_append_char(&builder, '/');
+		ok = ok && str_builder_append_str(&builder, str_from_cstr(rel_path));
+		if (!ok) {
 			SDL_Log("Couldn't allocate memory for path '%s/%s'", base, rel_path);
 			goto error;
 		}
-		SDL_Surface * sf = IMG_Load(path);
-		SDL_free(path);
+		SDL_Surface * sf = IMG_Load(builder.data);
+		str_builder_clear(&builder);
 		if (!sf) {
 			SDL_Log("Couldn't load image at [%s/%s]", base, rel_path);
 			goto error;
@@ -122,8 +126,10 @@ bool texture_cache_init(TextureCache * cache, Renderer * renderer) {
 		}
 		cache->internal[i] = tx;
 	}
+	str_builder_free(&builder);
 	return true;
 error:
+	str_builder_free(&builder);
 	while (--i >= 0) {
 		SDL_DestroyTexture(cache->internal[i]);
 	}

@@ -46,7 +46,7 @@ int main(void) {
 			SDL_assert(not_oom);
 		}
 		benchmark_end(&bench);
-		str_builder_clear(&builder);
+		str_builder_reset(&builder);
 		SDL_Log("str_builder_append_usize_1 took %zu cycles\n",
 			benchmark_elapsed_counter(&bench));
 		total_1 += benchmark_elapsed_counter(&bench);
@@ -56,7 +56,7 @@ int main(void) {
 			SDL_assert(not_oom);
 		}
 		benchmark_end(&bench);
-		str_builder_clear(&builder);
+		str_builder_reset(&builder);
 		SDL_Log("str_builder_append_usize_2 took %zu cycles\n",
 			benchmark_elapsed_counter(&bench));
 		total_2 += benchmark_elapsed_counter(&bench);

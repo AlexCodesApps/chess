@@ -136,7 +136,7 @@ int consumer_thread(void * arg) {
 	char * line;
 	while (SDL_GetAtomicInt(&server->cancel) == 0
 			&& (line = msg_queue_pop(&server->input, true))) {
-		SDL_WriteIO(out, line, strlen(line));
+		SDL_WriteIO(out, line, SDL_strlen(line));
 		SDL_WriteU8(out, '\n');
 		SDL_free(line);
 	}

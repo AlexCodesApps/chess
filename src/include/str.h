@@ -39,6 +39,7 @@ StrBuilder str_builder_new();
 void str_builder_init(StrBuilder * builder);
 void str_builder_free(StrBuilder * builder);
 void str_builder_clear(StrBuilder * builder);
+void str_builder_reset(StrBuilder * builder);
 
 bool str_builder_ensure_null_term(StrBuilder * builder);
 bool str_builder_append_char(StrBuilder * builder, char c);
