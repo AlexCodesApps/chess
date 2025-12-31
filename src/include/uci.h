@@ -2,9 +2,7 @@
 
 #include "chess.h"
 #include "ints.h"
-#include "str.h"
-#include <SDL3/SDL_mutex.h>
-#include <SDL3/SDL_process.h>
+#include <SDL3/SDL.h>
 #define UCI_SERVER_QUEUE_MAX 8
 
 typedef struct {
@@ -72,10 +70,6 @@ typedef struct {
 	char * backed_up_ptr;
 	UciMoveRequestData * move_request;
 } UciClient;
-
-/* neccesary for communication */
-bool fen_parse_board(Str str, ChessBoard * board);
-bool fen_encode_board(StrBuilder * builder, const ChessBoard * board);
 
 void uci_client_init(UciClient * client);
 void uci_client_free(UciClient * client);

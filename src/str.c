@@ -73,6 +73,22 @@ isize str_find_str(Str str, Str needle) {
 	return STR_NPOS;
 }
 
+bool str_split_at_char(Str str, char c, Str * begin, Str * end) {
+	isize i = str_find_char(str, c);
+	if (i == STR_NPOS) {
+		if (begin) *begin = str;
+		if (end) *end = STR_EMPTY;
+		return false;
+	}
+	if (begin) {
+		*begin = str_new(str.data, i);
+	}
+	if (end) {
+		*end = str_new(str.data + i + 1, str.size - 1 - i);
+	}
+	return true;
+}
+
 usize str_count_ch(Str str, char c) {
 	usize count = 0;
 	for (usize i = 0; i < str.size; ++i) {
@@ -101,6 +117,19 @@ void str_builder_clear(StrBuilder * builder) {
 void str_builder_reset(StrBuilder * builder) {
 	str_builder_free(builder);
 	str_builder_init(builder);
+}
+
+bool str_builder_ensure_capacity(StrBuilder * builder, usize capacity) {
+	if (builder->capacity >= capacity) {
+		return true;
+	}
+	char * ndata = SDL_realloc(builder->data, capacity);
+	if (!ndata) {
+		return false;
+	}
+	builder->data = ndata;
+	builder->capacity = capacity;
+	return true;
 }
 
 bool str_builder_ensure_null_term(StrBuilder * builder) {

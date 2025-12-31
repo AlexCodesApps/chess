@@ -314,127 +314,6 @@ void uci_client_free(UciClient * client) {
 	SDL_free(client->backed_up_ptr);
 }
 
-bool fen_parse_board(Str str, ChessBoard * board) {
-	SDL_zerop(board);
-	const char * iter = str.data;
-	u8 idx = 63;
-	/* TODO */
-	return false;
-}
-
-bool fen_encode_board(StrBuilder * builder, const ChessBoard * board) {
-	u8 count = 0; /* empty square count */
-	for (i8 y = 7;; --y) {
-		for (i8 x = 7; x >= 0; --x) {
-			u8 idx = (y * 8) + x;
-			const BoardSlot * slot = &board->slots[idx];
-			if (!slot->has_piece) {
-				++count;
-				continue;
-			}
-			if (count != 0) {
-				if (!str_builder_append_char(builder, count + '0')) {
-					return false;
-				}
-				count = 0;
-			}
-			char c;
-			switch (slot->piece) {
-			case CHESS_PAWN:
-				c = 'p' - 'a';
-				break;
-			case CHESS_KNIGHT:
-				c = 'n' - 'a';
-				break;
-			case CHESS_BISHOP:
-				c = 'b' - 'a';
-				break;
-			case CHESS_ROOK:
-				c = 'r' - 'a';
-				break;
-			case CHESS_QUEEN:
-				c = 'q' - 'a';
-				break;
-			case CHESS_KING:
-				c = 'k' - 'a';
-				break;
-			}
-			c += slot->side == WHITE_SIDE ? 'A' : 'a';
-			if (!str_builder_append_char(builder, c)) {
-				return false;
-			}
-		}
-		if (count != 0) {
-			if (!str_builder_append_char(builder, count + '0')) {
-				return false;
-			}
-			count = 0;
-		}
-		if (y == 0)
-			break;
-		if (!str_builder_append_char(builder, '/')) {
-			return false;
-		}
-	}
-	Str side_str = board->side == WHITE_SIDE ? S(" w ") : S(" b ");
-	if (!str_builder_append_str(builder, side_str)) {
-		return false;
-	}
-	{
-		char buf[4];
-		u8 bufc = 0;
-		if (board->sides[WHITE_SIDE].ks_castle_ok)
-			buf[bufc++] = 'K';
-		if (board->sides[WHITE_SIDE].qs_castle_ok)
-			buf[bufc++] = 'Q';
-		if (board->sides[BLACK_SIDE].ks_castle_ok)
-			buf[bufc++] = 'k';
-		if (board->sides[BLACK_SIDE].qs_castle_ok)
-			buf[bufc++] = 'q';
-		if (bufc != 0) {
-			if (!str_builder_append_str(builder, str_new(buf, bufc))) {
-				return false;
-			}
-		} else {
-			if (!str_builder_append_char(builder, '-')) {
-				return false;
-			}
-		}
-	}
-	if (!str_builder_append_char(builder, ' ')) {
-		return false;
-	}
-
-	if (board->opt_pawn != INVALID_PIECE_IDX) {
-		u8 idx = board->opt_pawn;
-		if (board->side == WHITE_SIDE)
-			idx += 8;
-		else
-			idx -= 8;
-		char buf[2];
-		buf[0] = (7 - idx % 8) + 'a';
-		buf[1] = (idx / 8) + '1';
-		if (!str_builder_append_str(builder, str_new(buf, 2))) {
-			return false;
-		}
-	} else if (!str_builder_append_char(builder, '-')) {
-		return false;
-	}
-	if (!str_builder_append_char(builder, ' ')) {
-		return false;
-	}
-	if (!str_builder_append_usize(builder, board->fifty_mv_rule)) {
-		return false;
-	}
-	if (!str_builder_append_char(builder, ' ')) {
-		return false;
-	}
-	if (!str_builder_append_usize(builder, board->turn_count)) {
-		return false;
-	}
-	return true;
-}
-
 u8 text_pos_to_idx(const char pos[static 2]) {
 	char a = pos[0];
 	char b = pos[1];
@@ -532,19 +411,19 @@ UciClientPollResult uci_poll_client(UciClient * client, UciServer * server) {
 				return UCI_POLL_CLIENT_OOM;
 			}
 			if (!fen_encode_board(&builder, client->move_request->board)) {
-				str_builder_free(&builder);
-				return UCI_POLL_CLIENT_OOM;
+				goto oom;
 			}
 			if (!str_builder_append_str(&builder, S("\ngo movetime "))) {
-				str_builder_free(&builder);
-				return UCI_POLL_CLIENT_OOM;
+				goto oom;
 			}
 			if (!str_builder_append_usize(&builder, client->move_request->timeout_ms)) {
-				str_builder_free(&builder);
-				return UCI_POLL_CLIENT_OOM;
+				goto oom;
 			}
 			SDL_Log("Launched request [\n%s\n]", builder.data);
 			return start_send_request(client, server, builder.data);
+		oom:
+			str_builder_free(&builder);
+			return UCI_POLL_CLIENT_OOM;
 		}
 	case UCI_CLIENT_EXPECTING_MOVE_REQ_RESP:
 		line = uci_server_poll_line(server);

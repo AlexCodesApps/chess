@@ -55,7 +55,7 @@ typedef struct {
 bool slider_status(Slider * slider);
 void slider_toggle(Slider * slider, f32 elapsed_time);
 void slider_update(Slider * slider, f32 elapsed_time);
-void slider_draw(Slider * slider, Display * display, TextureCache * cache, Rect2f rect, Texture * atlas);
+void slider_draw(Slider * slider, Display * display, Rect2f rect, Texture * atlas);
 
 typedef enum {
 	PLAYER_HUMAN,
@@ -140,6 +140,7 @@ struct State {
 		} animation;
 		GameState state : 2;
 		bool promotion_dialog : 1;
+		ChessSide view : 1;
 		u8 promotion_idx;
 	} game;
 	Slider p1_slider;
@@ -156,7 +157,6 @@ struct State {
 	u8 bg_direction : 1;
 	bool mouse_down : 1;
 	bool mouse_press : 1;
-	ChessSide board_view : 1;
 };
 
 typedef enum {
@@ -164,7 +164,7 @@ typedef enum {
 	STATE_UPDATE_QUIT,
 } StateUpdateResult;
 
-void state_init(State * state, const Display * display);
+void state_init(State * state);
 void state_process_event(State * state, const Event * event);
 StateUpdateResult state_update(State * state, f32 elapsed_time, f32 delta_time);
 void state_draw(State * state, TextureCache * cache, Display * display);

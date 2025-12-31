@@ -1,7 +1,4 @@
 .*
 build
-main
-chessbots
-uci
 !.gitignore
 compile_commands.json

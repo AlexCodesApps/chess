@@ -70,7 +70,7 @@ static LegalBoardMoves refresh_moves(ChessBoard * board, LegalBoardMoves moves[6
 	return composite_moves;
 }
 
-void state_init(State * state, const Display * display) {
+void state_init(State * state) {
 	SDL_zerop(state);
 	state->stage = STATE_STAGE_TITLE;
 	state->bg_scale = (f32)SCREEN_WIDTH / (8 * 16 * 2);
@@ -143,18 +143,22 @@ static void state_show_err_msg(State * state, Str msg) {
 
 static void state_start_game(State * state) {
 	state->game.board = INITIAL_CHESS_BOARD;
+	FENParseResult parsed = fen_parse_board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 0", &state->game.board, NULL);
+	SDL_assert(parsed == FEN_PARSE_OK);
 	refresh_moves(&state->game.board, state->game.legal_moves);
 	if (slider_status(&state->board_rotate_slider)) {
-		state->board_view = WHITE_SIDE;
+		state->game.view = WHITE_SIDE;
 	} else {
 		switch ((u32)slider_status(&state->p1_slider) << 1 | (u32)slider_status(&state->p2_slider)) {
 			case 0b00:
 			case 0b10:
+				state->game.view = WHITE_SIDE;
+				break;
 			case 0b11:
-				state->board_view = WHITE_SIDE;
+				state->game.view = state->game.board.side;
 				break;
 			case 0b01:
-				state->board_view = BLACK_SIDE;
+				state->game.view = BLACK_SIDE;
 				break;
 		}
 	}
@@ -217,7 +221,7 @@ static u8 state_mouse_board_idx(State * state) {
 		return INVALID_PIECE_IDX;
 	int x = (int)a.x;
 	int y = (int)a.y;
-	if (state->board_view == WHITE_SIDE) {
+	if (state->game.view == WHITE_SIDE) {
 		x = 7 - x;
 		y = 7 - y;
 	}
@@ -235,7 +239,7 @@ void state_game_next_turn(State * state) {
 		return;
 	}
 	if (slider_status(&state->board_rotate_slider)) {
-		state->board_view ^= 1;
+		state->game.view ^= 1;
 	}
 	state->game.state = GAME_STATE_IDLE;
 }
@@ -467,7 +471,6 @@ void state_update_game(State * state, f32 elapsed_time) {
 				state_show_err_msg(state, S("Client Disconnect"));
 				break;
 			case PLAYER_POLL_MOVED: {
-				ChessBoard * board = &state->game.board;
 				LegalBoardMoves moves = state->game.legal_moves[poll.as.moved.from];
 				if (!legal_board_moves_contains_idx(moves, poll.as.moved.to)) {
 					if (p->type == PLAYER_BOT) {
@@ -606,7 +609,7 @@ void slider_update(Slider * slider, f32 elapsed_time) {
 	}
 }
 
-void slider_draw(Slider * slider, Display * display, TextureCache * cache, Rect2f rect, Texture * atlas) {
+void slider_draw(Slider * slider, Display * display, Rect2f rect, Texture * atlas) {
 	int frame;
 	switch (slider->state) {
 	case SLIDER_ON:
@@ -756,17 +759,17 @@ void state_draw_game_settings(State * state, TextureCache * cache, Display * dis
 	a = get_slot_rect(MENU_TITLE_SLOT + 1);
 	partition_rect_horiz(a, 0.5, &b, &c);
 	draw_text(S("P1"), display, cache, b);
-	slider_draw(&state->p1_slider, display, cache,
+	slider_draw(&state->p1_slider, display,
 		c, texture_cache_lookup(cache, TEXTURE_ID_HUMAN_BOT_SLIDER));
 	a = get_slot_rect(MENU_TITLE_SLOT + 2);
 	partition_rect_horiz(a, 0.5, &b, &c);
 	draw_text(S("P2"), display, cache, b);
-	slider_draw(&state->p2_slider, display, cache,
+	slider_draw(&state->p2_slider, display,
 		c, texture_cache_lookup(cache, TEXTURE_ID_HUMAN_BOT_SLIDER));
 	a = get_slot_rect(MENU_TITLE_SLOT + 3);
 	partition_rect_horiz(a, 0.5, &b, &c);
 	draw_text(S("Rotate?"), display, cache, b);
-	slider_draw(&state->board_rotate_slider, display, cache,
+	slider_draw(&state->board_rotate_slider, display,
 		c, texture_cache_lookup(cache, TEXTURE_ID_SLIDER));
 	draw_text(S("BACK"), display, cache, get_slot_rect(BACK_BUTTON_SLOT));
 	draw_menu_bg(display, cache, get_slot_rect(START_BUTTON_SLOT));
@@ -783,7 +786,7 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 	);
 	f32 slot_width = board_rect.w / 8.0;
 	f32 piece_width = slot_width * (8.0 / 9.0);
-	SDL_FlipMode mode = state->board_view == WHITE_SIDE ? SDL_FLIP_NONE : SDL_FLIP_VERTICAL;
+	SDL_FlipMode mode = state->game.view == WHITE_SIDE ? SDL_FLIP_NONE : SDL_FLIP_VERTICAL;
 	SDL_RenderTextureRotated(display->renderer, board, NULL, &board_rect, 0.0, NULL, mode);
 	Player * p = state_current_player(state);
 	bool p_has_piece = p->type == PLAYER_HUMAN && p->as.human.held_idx != INVALID_PIECE_IDX;
@@ -795,7 +798,7 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 			for (int x = 0; x < 8; ++x) {
 				u8 sx = (u8)x;
 				u8 sy = (u8)y;
-				if (state->board_view == WHITE_SIDE) {
+				if (state->game.view == WHITE_SIDE) {
 					sx = 7 - sx;
 					sy = 7 - sy;
 				}
@@ -817,7 +820,7 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 		for (int x = 0; x < 8; ++x) {
 			u8 sx = (u8)x;
 			u8 sy = (u8)y;
-			if (state->board_view == WHITE_SIDE) {
+			if (state->game.view == WHITE_SIDE) {
 				sx = 7 - sx;
 				sy = 7 - sy;
 			}
@@ -851,7 +854,7 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 		int y = idx / 8;
 		int x2 = idx2 % 8;
 		int y2 = idx2 / 8;
-		if (state->board_view == WHITE_SIDE) {
+		if (state->game.view == WHITE_SIDE) {
 			x = 7 - x;
 			y = 7 - y;
 			x2 = 7 - x2;

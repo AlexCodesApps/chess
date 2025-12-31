@@ -191,11 +191,11 @@ static void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_
 BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 to) {
 	BoardMoveResult result = board_make_move_internal(board, from, to);
 	if (board->side == BLACK_SIDE)
-		++board->turn_count;
+		++board->full_moves;
 	if (result.capture || board->slots[result.to].piece == CHESS_PAWN)
-		board->fifty_mv_rule = 0;
+		board->half_moves = 0;
 	else
-		++board->fifty_mv_rule;
+		++board->half_moves;
 	board->side ^= 1;
 	return result;
 }
@@ -550,3 +550,351 @@ const char * chess_piece_str(ChessPiece piece) {
 			return "CHESS_KING";
 	}
 }
+
+FENParseResult fen_parse_board(const char * iter, ChessBoard * board, const char ** end) {
+	SDL_zerop(board);
+	u8 idx = 63;
+	board->sides[WHITE_SIDE].king_idx = INVALID_PIECE_IDX;
+	board->sides[BLACK_SIDE].king_idx = INVALID_PIECE_IDX;
+	i8 piece_budgets[2][CHESS_PIECE_COUNT] = { // NOTE PAWNS CAN PROMOTE INTO OTHER PIECES
+		[WHITE_SIDE] = {
+			[CHESS_PAWN] = 8,
+			[CHESS_KNIGHT] = 2,
+			[CHESS_BISHOP] = 2,
+			[CHESS_ROOK] = 2,
+			[CHESS_QUEEN] = 1,
+			[CHESS_KING] = 1,
+		},
+		[BLACK_SIDE] = {
+			[CHESS_PAWN] = 8,
+			[CHESS_KNIGHT] = 2,
+			[CHESS_BISHOP] = 2,
+			[CHESS_ROOK] = 2,
+			[CHESS_QUEEN] = 1,
+			[CHESS_KING] = 1,
+		}
+	};
+	for (int i = 0; i < 8; ++i) {
+		char end = i != 7 ? '/' : ' ';
+		int row_budget = 8;
+		char c;
+		while ((c = *iter++) != end) {
+			if (row_budget <= 0)
+				return FEN_PARSE_INVALID_INPUT;
+			ChessPiece piece;
+			switch (c) {
+			case '\0':
+				return FEN_PARSE_INVALID_INPUT;
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+				row_budget -= (c - '0');
+				if (row_budget < 0)
+					return FEN_PARSE_INVALID_INPUT;
+				idx -= (c - '0');
+				break;
+			case 'p':
+				piece = CHESS_PAWN;
+				goto black_piece;
+			case 'n':
+				piece = CHESS_KNIGHT;
+				goto black_piece;
+			case 'b':
+				piece = CHESS_BISHOP;
+				goto black_piece;
+			case 'r':
+				piece = CHESS_ROOK;
+				goto black_piece;
+			case 'q':
+				piece = CHESS_QUEEN;
+				goto black_piece;
+			case 'k':
+				piece = CHESS_KING;
+				goto black_piece;
+				break;
+			case 'P':
+				piece = CHESS_PAWN;
+				goto white_piece;
+			case 'N':
+				piece = CHESS_KNIGHT;
+				goto white_piece;
+			case 'B':
+				piece = CHESS_BISHOP;
+				goto white_piece;
+			case 'R':
+				piece = CHESS_ROOK;
+				goto white_piece;
+			case 'Q':
+				piece = CHESS_QUEEN;
+				goto white_piece;
+			case 'K':
+				piece = CHESS_KING;
+				goto white_piece;
+			default:
+				break;
+			white_piece:
+				if (piece == CHESS_KING) {
+					board->sides[WHITE_SIDE].king_idx = idx;
+				}
+				--row_budget;
+				--piece_budgets[WHITE_SIDE][piece];
+				board->slots[idx--] = (BoardSlot){ .has_piece = true, .side = WHITE_SIDE, .piece = piece };
+				break;
+			black_piece:
+				if (piece == CHESS_KING) {
+					board->sides[BLACK_SIDE].king_idx = idx;
+				}
+				--row_budget;
+				--piece_budgets[BLACK_SIDE][piece];
+				board->slots[idx--] = (BoardSlot){ .has_piece = true, .side = BLACK_SIDE, .piece = piece };
+				break;
+			};
+		}
+	}
+	char side = *iter++;
+	if (side == 'b') {
+		board->side = BLACK_SIDE;
+	} else if (side == 'w') {
+		board->side = WHITE_SIDE;
+	} else {
+		return FEN_PARSE_INVALID_INPUT;
+	}
+	if (*iter++ != ' ')
+		return FEN_PARSE_INVALID_INPUT;
+	u8 mask = 0;
+	if (*iter == 'K') {
+		++iter;
+		mask |= 0b0001;
+		board->sides[WHITE_SIDE].ks_castle_ok = true;
+	}
+	if (*iter == 'Q') {
+		++iter;
+		mask |= 0b0010;
+		board->sides[WHITE_SIDE].qs_castle_ok = true;
+	}
+	if (*iter == 'k') {
+		++iter;
+		mask |= 0b0100;
+		board->sides[BLACK_SIDE].ks_castle_ok = true;
+	}
+	if (*iter == 'q') {
+		++iter;
+		mask |= 0b1000;
+		board->sides[BLACK_SIDE].qs_castle_ok = true;
+	}
+	if (!mask) {
+		if (*iter++ != '-')
+			return FEN_PARSE_INVALID_INPUT;
+	}
+	if (*iter++ != ' ')
+		return FEN_PARSE_INVALID_INPUT;
+	char c = *iter++;
+	if (c != '-') {
+		if (c < 'a' || c > 'h')
+			return FEN_PARSE_INVALID_INPUT;
+		u8 x = 7 - (c - 'a');
+		c = *iter++;
+		if (c < '1' || c > '8')
+			return FEN_PARSE_INVALID_INPUT;
+		u8 y = (c - '1');
+		u8 idx = y * 8 + x;
+		board->opt_pawn = idx;
+	} else {
+		board->opt_pawn = INVALID_PIECE_IDX;
+	}
+	if (*iter++ != ' ')
+		return FEN_PARSE_INVALID_INPUT;
+	if (!SDL_isdigit(c = *iter))
+		return FEN_PARSE_INVALID_INPUT;
+	usize half_moves = 0;
+	do {
+		half_moves = half_moves * 10 + (c - '0');
+		++iter;
+	} while (SDL_isdigit(c = *iter));
+	if (*iter++ != ' ')
+		return FEN_PARSE_INVALID_INPUT;
+	if (!SDL_isdigit(c = *iter))
+		return FEN_PARSE_INVALID_INPUT;
+	usize full_moves = 0;
+	do {
+		full_moves = full_moves * 10 + (c - '0');
+		++iter;
+	} while (SDL_isdigit(c = *iter));
+	board->half_moves = half_moves;
+	board->full_moves = full_moves;
+	// Validating board now
+	SDL_Log("Validating board");
+	if (board->sides[WHITE_SIDE].king_idx == INVALID_PIECE_IDX
+		|| board->sides[BLACK_SIDE].king_idx == INVALID_PIECE_IDX) {
+		return FEN_PARSE_ILLEGAL_STATE;
+	}
+	SDL_Log("Validated King Indices");
+	for (u8 i = 0; i < 2; ++i) {
+		for (u8 p = 0; p < CHESS_PIECE_COUNT; ++p) {
+			if (piece_budgets[i][p] >= 0)
+				continue;
+			if (piece_budgets[i][CHESS_PAWN] <= 0)
+				return FEN_PARSE_ILLEGAL_STATE;
+			if (p == CHESS_KING)
+				return FEN_PARSE_ILLEGAL_STATE;
+			--piece_budgets[i][CHESS_PAWN];
+		}
+	}
+	SDL_Log("Validated Piece Counts");
+	if (mask & 0b0011) {
+		if (board->sides[WHITE_SIDE].king_idx != INITIAL_WHITE_KING_IDX) {
+			return FEN_PARSE_ILLEGAL_STATE;
+		}
+		if (mask & 0b0001) {
+			BoardSlot * slot = &board->slots[INITIAL_WHITE_KING_SIDE_ROOK_IDX];
+			if (!slot->has_piece || slot->side != WHITE_SIDE || slot->piece != CHESS_ROOK)
+				return FEN_PARSE_ILLEGAL_STATE;
+		}
+		if (mask & 0b0010) {
+			BoardSlot * slot = &board->slots[INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX];
+			if (!slot->has_piece || slot->side != WHITE_SIDE || slot->piece != CHESS_ROOK)
+				return FEN_PARSE_ILLEGAL_STATE;
+		}
+	}
+	if (mask & 0b1100) {
+		if (board->sides[BLACK_SIDE].king_idx != INITIAL_BLACK_KING_IDX) {
+			return FEN_PARSE_ILLEGAL_STATE;
+		}
+		if (mask & 0b0100) {
+			BoardSlot * slot = &board->slots[INITIAL_BLACK_KING_SIDE_ROOK_IDX];
+			if (!slot->has_piece || slot->side != BLACK_SIDE || slot->piece != CHESS_ROOK)
+				return FEN_PARSE_ILLEGAL_STATE;
+		}
+		if (mask & 0b1000) {
+			BoardSlot * slot = &board->slots[INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX];
+			if (!slot->has_piece || slot->side != BLACK_SIDE || slot->piece != CHESS_ROOK)
+				return FEN_PARSE_ILLEGAL_STATE;
+		}
+	}
+	SDL_Log("Validated castling rights");
+	if (board_has_checks(board, board->side == WHITE_SIDE ? BLACK_SIDE : WHITE_SIDE)) {
+		return FEN_PARSE_ILLEGAL_STATE;
+	}
+	SDL_Log("Validated no checks on opponent");
+	if (end)
+		*end = iter;
+	return FEN_PARSE_OK;
+}
+
+bool fen_encode_board(StrBuilder * builder, const ChessBoard * board) {
+	u8 count = 0; /* empty square count */
+	for (i8 y = 7;; --y) {
+		for (i8 x = 7; x >= 0; --x) {
+			u8 idx = (y * 8) + x;
+			const BoardSlot * slot = &board->slots[idx];
+			if (!slot->has_piece) {
+				++count;
+				continue;
+			}
+			if (count != 0) {
+				if (!str_builder_append_char(builder, count + '0')) {
+					return false;
+				}
+				count = 0;
+			}
+			char c;
+			switch (slot->piece) {
+			case CHESS_PAWN:
+				c = 'p' - 'a';
+				break;
+			case CHESS_KNIGHT:
+				c = 'n' - 'a';
+				break;
+			case CHESS_BISHOP:
+				c = 'b' - 'a';
+				break;
+			case CHESS_ROOK:
+				c = 'r' - 'a';
+				break;
+			case CHESS_QUEEN:
+				c = 'q' - 'a';
+				break;
+			case CHESS_KING:
+				c = 'k' - 'a';
+				break;
+			}
+			c += slot->side == WHITE_SIDE ? 'A' : 'a';
+			if (!str_builder_append_char(builder, c)) {
+				return false;
+			}
+		}
+		if (count != 0) {
+			if (!str_builder_append_char(builder, count + '0')) {
+				return false;
+			}
+			count = 0;
+		}
+		if (y == 0)
+			break;
+		if (!str_builder_append_char(builder, '/')) {
+			return false;
+		}
+	}
+	Str side_str = board->side == WHITE_SIDE ? S(" w ") : S(" b ");
+	if (!str_builder_append_str(builder, side_str)) {
+		return false;
+	}
+	{
+		char buf[4];
+		u8 bufc = 0;
+		if (board->sides[WHITE_SIDE].ks_castle_ok)
+			buf[bufc++] = 'K';
+		if (board->sides[WHITE_SIDE].qs_castle_ok)
+			buf[bufc++] = 'Q';
+		if (board->sides[BLACK_SIDE].ks_castle_ok)
+			buf[bufc++] = 'k';
+		if (board->sides[BLACK_SIDE].qs_castle_ok)
+			buf[bufc++] = 'q';
+		if (bufc != 0) {
+			if (!str_builder_append_str(builder, str_new(buf, bufc))) {
+				return false;
+			}
+		} else {
+			if (!str_builder_append_char(builder, '-')) {
+				return false;
+			}
+		}
+	}
+	if (!str_builder_append_char(builder, ' ')) {
+		return false;
+	}
+	if (board->opt_pawn != INVALID_PIECE_IDX) {
+		u8 idx = board->opt_pawn;
+		if (board->side == WHITE_SIDE)
+			idx += 8;
+		else
+			idx -= 8;
+		char buf[2];
+		buf[0] = (7 - idx % 8) + 'a';
+		buf[1] = (idx / 8) + '1';
+		if (!str_builder_append_str(builder, str_new(buf, 2))) {
+			return false;
+		}
+	} else if (!str_builder_append_char(builder, '-')) {
+		return false;
+	}
+	if (!str_builder_append_char(builder, ' ')) {
+		return false;
+	}
+	if (!str_builder_append_usize(builder, board->half_moves)) {
+		return false;
+	}
+	if (!str_builder_append_char(builder, ' ')) {
+		return false;
+	}
+	if (!str_builder_append_usize(builder, board->full_moves)) {
+		return false;
+	}
+	return true;
+}
+

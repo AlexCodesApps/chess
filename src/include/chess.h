@@ -1,6 +1,7 @@
 #pragma once
 #include "ints.h"
 #include "maths.h"
+#include "str.h"
 
 #define INVALID_PIECE_IDX ((u8)255)
 
@@ -12,6 +13,8 @@ typedef enum : u8 {
 	CHESS_QUEEN,
 	CHESS_KING,
 } ChessPiece;
+
+#define CHESS_PIECE_COUNT (CHESS_KING + 1)
 
 typedef enum : bool {
 	WHITE_SIDE,
@@ -40,14 +43,14 @@ typedef struct {
 
 typedef struct {
 	BoardSlot slots[64];
-	usize fifty_mv_rule;
-	usize turn_count;
+	usize half_moves;
+	usize full_moves;
 	u8 opt_pawn;
 	/* determines whether the possibility of castling is still there */
 	ChessSide side : 1;
 	struct {
-		bool qs_castle_ok : 1;
 		bool ks_castle_ok : 1;
+		bool qs_castle_ok : 1;
 		u8 king_idx;
 	} sides[2];
 } ChessBoard;
@@ -77,8 +80,8 @@ static const ChessBoard INITIAL_CHESS_BOARD = {
 		B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN),
 		B(ROOK), B(KNIGHT), B(BISHOP), B(KING), B(QUEEN), B(BISHOP), B(KNIGHT), B(ROOK),
 	},
-	.turn_count = 1,
-	.fifty_mv_rule = 0,
+	.half_moves = 0,
+	.full_moves = 0,
 	.opt_pawn = INVALID_PIECE_IDX,
 	.side = WHITE_SIDE,
 	.sides = {
@@ -154,3 +157,12 @@ void board_set_promotion_type(ChessBoard * board, ChessPiece piece);
 LegalBoardMoves board_get_legal_moves_for_piece(ChessBoard * board, u8 idx);
 
 const char * chess_piece_str(ChessPiece piece);
+
+typedef enum {
+	FEN_PARSE_OK,
+	FEN_PARSE_INVALID_INPUT,
+	FEN_PARSE_ILLEGAL_STATE
+} FENParseResult;
+
+FENParseResult fen_parse_board(const char * str, ChessBoard * board, const char ** end);
+bool fen_encode_board(StrBuilder * builder, const ChessBoard * board);

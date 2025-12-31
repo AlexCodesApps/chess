@@ -2,6 +2,8 @@
 #include "src/include/state.h"
 
 int main(int argc, char ** argv) {
+	(void)argc;
+	(void)argv;
 	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
 		SDL_Log("%s", SDL_GetError());
 		return 1;
@@ -22,9 +24,8 @@ int main(int argc, char ** argv) {
 		return 1;
 	}
 	SDL_Log("Loaded all textures");
-	SDL_Event event;
 	State state;
-	state_init(&state, &display);
+	state_init(&state);
 	bool running = true;
 	SDL_Log("Entering main loop");
 	u64 initial_ticks = SDL_GetTicks();

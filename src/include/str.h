@@ -27,6 +27,8 @@ isize str_find_char(Str str, char c);
 isize str_find_char_in(Str str, Str chars);
 isize str_find_str(Str str, Str needle);
 
+bool str_split_at_char(Str str, char c, Str * begin, Str * end);
+
 usize str_count_ch(Str str, char c);
 
 typedef struct {
@@ -41,6 +43,7 @@ void str_builder_free(StrBuilder * builder);
 void str_builder_clear(StrBuilder * builder);
 void str_builder_reset(StrBuilder * builder);
 
+bool str_builder_ensure_capacity(StrBuilder * builder, usize capacity);
 bool str_builder_ensure_null_term(StrBuilder * builder);
 bool str_builder_append_char(StrBuilder * builder, char c);
 bool str_builder_append_str(StrBuilder * builder, Str str);
