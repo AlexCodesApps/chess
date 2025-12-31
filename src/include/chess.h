@@ -33,7 +33,9 @@ typedef struct {
 	bool promotion : 1;
 	bool en_passant : 1; /* offsets the piece restoration slot when unmaking move */
 	bool cancelled_qs_castle : 1;
+	bool cancelled_op_qs_castle : 1;
 	bool cancelled_ks_castle : 1;
+	bool cancelled_op_ks_castle : 1;
 	ChessPiece piece : 3;
 	u8 from;
 	u8 to;
@@ -46,9 +48,9 @@ typedef struct {
 	usize half_moves;
 	usize full_moves;
 	u8 opt_pawn;
-	/* determines whether the possibility of castling is still there */
 	ChessSide side : 1;
 	struct {
+	/* determines whether the possibility of castling is still there */
 		bool ks_castle_ok : 1;
 		bool qs_castle_ok : 1;
 		u8 king_idx;

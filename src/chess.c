@@ -76,6 +76,12 @@ static BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 
 		.to = to,
 		.last_opt_pawn = board->opt_pawn,
 		.captured = to,
+		.promotion = false,
+		.capture = false,
+		.cancelled_ks_castle = false,
+		.cancelled_qs_castle = false,
+		.cancelled_op_ks_castle = false,
+		.cancelled_op_qs_castle = false,
 	};
 	board->opt_pawn = INVALID_PIECE_IDX;
 	if (board->slots[from].piece == CHESS_KING) {
@@ -144,6 +150,19 @@ static BoardMoveResult board_make_move_internal(ChessBoard * board, u8 from, u8 
 		result.capture = true;
 		result.piece = board->slots[to].piece;
 		board->slots[result.captured] = EMPTY_SLOT;
+		if (result.captured == INITIAL_WHITE_KING_SIDE_ROOK_IDX && board->sides[WHITE_SIDE].ks_castle_ok) {
+			board->sides[WHITE_SIDE].ks_castle_ok = false;
+			result.cancelled_op_ks_castle = true;
+		} else if (result.captured == INITIAL_WHITE_QUEEN_SIDE_ROOK_IDX) {
+			board->sides[WHITE_SIDE].qs_castle_ok = false;
+			result.cancelled_op_qs_castle = true;
+		} else if (result.captured == INITIAL_BLACK_KING_SIDE_ROOK_IDX) {
+			board->sides[BLACK_SIDE].ks_castle_ok = false;
+			result.cancelled_op_ks_castle = true;
+		} else if (result.captured == INITIAL_BLACK_QUEEN_SIDE_ROOK_IDX) {
+			board->sides[BLACK_SIDE].qs_castle_ok = false;
+			result.cancelled_op_qs_castle = true;
+		}
 	}
 	transfer_to_slot(board, from, to);
 	if (is_promoting_pawn_at_idx(board, to)) {
@@ -186,6 +205,13 @@ static void board_unmake_move_internal(ChessBoard * board, BoardMoveResult last_
 	if (last_move.cancelled_qs_castle) {
 		board->sides[board->side].qs_castle_ok = true;
 	}
+	ChessSide op = board->side == BLACK_SIDE ? WHITE_SIDE : BLACK_SIDE;
+	if (last_move.cancelled_op_ks_castle) {
+		board->sides[op].ks_castle_ok = true;
+	}
+	if (last_move.cancelled_op_qs_castle) {
+		board->sides[op].qs_castle_ok = true;
+	}
 }
 
 BoardMoveResult board_make_move(ChessBoard * board, u8 from, u8 to) {
@@ -214,7 +240,19 @@ usize board_count_moves(ChessBoard * board, usize depth) {
 			if (legal_board_moves_contains_idx(moves, j)) {
 				BoardMoveResult res = board_make_move_internal(board, i, j);
 				board->side ^= 1;
-				count += board_count_moves(board, depth - 1);
+				if (!res.promotion) {
+					count += board_count_moves(board, depth - 1);
+				} else {
+					board->slots[res.to].piece = CHESS_KNIGHT;
+					count += board_count_moves(board, depth - 1);
+					board->slots[res.to].piece = CHESS_BISHOP;
+					count += board_count_moves(board, depth - 1);
+					board->slots[res.to].piece = CHESS_ROOK;
+					count += board_count_moves(board, depth - 1);
+					board->slots[res.to].piece = CHESS_QUEEN;
+					count += board_count_moves(board, depth - 1);
+					board->slots[res.to].piece = CHESS_PAWN;
+				}
 				board->side ^= 1;
 				board_unmake_move_internal(board, res);
 			}
