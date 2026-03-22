@@ -51,3 +51,6 @@ bool str_builder_append_isize(StrBuilder * builder, isize i);
 bool str_builder_append_usize(StrBuilder * builder, usize u);
 
 Str str_builder_as_str(StrBuilder * builder);
+
+/* FALLIBLE */
+char * str_builder_as_cstr(StrBuilder * builder);

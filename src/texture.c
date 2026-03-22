@@ -90,7 +90,7 @@ bool texture_cache_init(TextureCache * cache, Renderer * renderer) {
 		const char * rel_path = texture_id_to_asset_path((TextureId)i);
 		Str base_str = str_from_cstr(base);
 		Str rel_path_str = str_from_cstr(rel_path);
-		bool ok = str_builder_ensure_capacity(&builder, base_str.size + 1 + rel_path_str.size + 1);
+		bool ok = str_builder_ensure_capacity(&builder, base_str.size + 4 + rel_path_str.size + 1);
 		ok = ok && str_builder_append_str(&builder, str_from_cstr(base));
 		ok = ok && str_builder_append_str(&builder, S("/../"));
 		ok = ok && str_builder_append_str(&builder, str_from_cstr(rel_path));

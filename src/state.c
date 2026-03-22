@@ -449,10 +449,6 @@ PlayerPollResult player_poll(State * state, Player * player) {
 }
 
 void state_update_game(State * state, f32 elapsed_time) {
-	if (state->game.promotion_dialog) {
-		// TODO: implement
-		return;
-	}
 	Player * p = state_current_player(state);
 	switch (state->game.state) {
 	case GAME_STATE_IDLE:

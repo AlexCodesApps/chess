@@ -57,52 +57,7 @@ typedef struct {
 	} sides[2];
 } ChessBoard;
 
-#define EMPTY_SLOT ((BoardSlot) { .has_piece = 0 })
-
-#define W(PIECE) (BoardSlot) { \
-	.has_piece = 1, \
-	.side = WHITE_SIDE, \
-	.piece = CHESS_ ## PIECE, \
-}
-#define E EMPTY_SLOT
-#define B(PIECE) (BoardSlot) { \
-	.has_piece = 1, \
-	.side = BLACK_SIDE, \
-	.piece = CHESS_ ## PIECE, \
-}
-
-static const ChessBoard INITIAL_CHESS_BOARD = {
-	.slots = {
-		W(ROOK), W(KNIGHT), W(BISHOP), W(KING), W(QUEEN), W(BISHOP), W(KNIGHT), W(ROOK),
-		W(PAWN), W(PAWN), W(PAWN), W(PAWN), W(PAWN), W(PAWN), W(PAWN), W(PAWN),
-		E, E, E, E, E, E, E, E,
-		E, E, E, E, E, E, E, E,
-		E, E, E, E, E, E, E, E,
-		E, E, E, E, E, E, E, E,
-		B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN), B(PAWN),
-		B(ROOK), B(KNIGHT), B(BISHOP), B(KING), B(QUEEN), B(BISHOP), B(KNIGHT), B(ROOK),
-	},
-	.half_moves = 0,
-	.full_moves = 0,
-	.opt_pawn = INVALID_PIECE_IDX,
-	.side = WHITE_SIDE,
-	.sides = {
-		[0] = {
-			.ks_castle_ok = true,
-			.qs_castle_ok = true,
-			.king_idx = 3,
-		},
-		[1] = {
-			.ks_castle_ok = true,
-			.qs_castle_ok = true,
-			.king_idx = 59,
-		},
-	},
-};
-
-#undef W
-#undef E
-#undef B
+extern const ChessBoard INITIAL_CHESS_BOARD;
 
 /* These are only valid when the kings haven't moved */
 #define INITIAL_WHITE_KING_IDX 3

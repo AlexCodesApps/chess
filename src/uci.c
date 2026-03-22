@@ -112,13 +112,14 @@ int producer_thread(void * arg) {
 				return -1;
 			}
 		}
-		if (!str_builder_ensure_null_term(&builder)) {
+		char * str = str_builder_as_cstr(&builder);
+		if (!str) {
 			str_builder_free(&builder);
 			SDL_SetAtomicInt(&server->eof, 1);
 			return -1;
 		}
-		if (!msg_queue_push(&server->output, builder.data, true)) {
-			SDL_free(builder.data);
+		if (!msg_queue_push(&server->output, str, true)) {
+			str_builder_free(&builder);
 			break;
 		}
 		str_builder_init(&builder);
@@ -435,13 +436,13 @@ UciClientPollResult uci_poll_client(UciClient * client, UciServer * server) {
 			Str cmd = get_cmd_name(&iter);
 			if (str_equal(cmd, S("bestmove"))) {
 				SDL_Log("Request fulfilled");
+				client->state = UCI_CLIENT_MAIN_LOOP;
 				UciMoveRequestData * req = client->move_request;
 				Str bestmove = next_token(&iter);
 				if (!parse_move(bestmove, req)) {
 					r = UCI_POLL_CLIENT_INVALID_DATA;
 				} else {
 					client->move_request = NULL;
-					client->state = UCI_CLIENT_MAIN_LOOP;
 					r = UCI_POLL_CLIENT_MOVE_RESPONSE;
 				}
 			}

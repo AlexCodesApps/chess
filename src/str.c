@@ -207,3 +207,9 @@ bool str_builder_append_usize(StrBuilder * builder, usize u) {
 Str str_builder_as_str(StrBuilder * builder) {
 	return str_new(builder->data, builder->size);
 }
+
+char * str_builder_as_cstr(StrBuilder * builder) {
+	if (!str_builder_ensure_null_term(builder))
+		return NULL;
+	return builder->data;
+}
