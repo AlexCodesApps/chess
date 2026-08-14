@@ -2,92 +2,8 @@
 #include "include/str.h"
 #include <SDL3/SDL_log.h>
 
-bool msg_queue_open(MsgQueue * queue) {
-	queue->head = 0;
-	queue->tail = 0;
-	queue->closed = 0;
-	queue->lock = SDL_CreateMutex();
-	if (!queue->lock)
-		return false;
-	queue->space_avail_cond = SDL_CreateCondition();
-	if (!queue->space_avail_cond) {
-		SDL_DestroyMutex(queue->lock);
-		return false;
-	}
-	queue->items_avail_cond = SDL_CreateCondition();
-	if (!queue->items_avail_cond) {
-		SDL_DestroyCondition(queue->space_avail_cond);
-		SDL_DestroyMutex(queue->lock);
-		return false;
-	}
-	return true;
-}
-
-void msg_queue_destroy(MsgQueue * queue) {
-	SDL_DestroyCondition(queue->items_avail_cond);
-	SDL_DestroyCondition(queue->space_avail_cond);
-	SDL_DestroyMutex(queue->lock);
-}
-
 static u8 next(u8 i) {
-	return (i + 1) % UCI_SERVER_QUEUE_MAX;
-}
-
-bool msg_queue_push(MsgQueue * queue, void * line, bool block) {
-	SDL_LockMutex(queue->lock);
-	if (queue->closed != 0) {
-		return false;
-	}
-	if (queue->head == next(queue->tail)) { /* full */
-		if (!block) {
-			SDL_UnlockMutex(queue->lock);
-			return false;
-		}
-		SDL_WaitCondition(queue->space_avail_cond, queue->lock);
-		if (queue->closed) {
-			SDL_UnlockMutex(queue->lock);
-			return false;
-		}
-	}
-	queue->buf[queue->tail] = line;
-	queue->tail = next(queue->tail);
-	SDL_UnlockMutex(queue->lock);
-	SDL_SignalCondition(queue->items_avail_cond);
-	return true;
-}
-
-void * msg_queue_pop(MsgQueue * queue, bool block) {
-	SDL_LockMutex(queue->lock);
-	if (queue->closed != 0) {
-		SDL_UnlockMutex(queue->lock);
-		return NULL;
-	}
-	if (queue->head == queue->tail) { /* empty */
-		if (!block) {
-			SDL_UnlockMutex(queue->lock);
-			return NULL;
-		}
-		SDL_WaitCondition(queue->items_avail_cond, queue->lock);
-		if (queue->closed) {
-			SDL_UnlockMutex(queue->lock);
-			return NULL;
-		}
-	}
-	char * line = queue->buf[queue->head];
-	queue->head = next(queue->head);
-	SDL_UnlockMutex(queue->lock);
-	SDL_SignalCondition(queue->space_avail_cond);
-	return line;
-}
-
-void msg_queue_close(MsgQueue * queue) {
-	SDL_LockMutex(queue->lock);
-	queue->closed = 1;
-	for (u8 i = queue->head; i != queue->tail; i = next(i)) {
-	}
-	SDL_UnlockMutex(queue->lock);
-	SDL_SignalCondition(queue->items_avail_cond);
-	SDL_SignalCondition(queue->space_avail_cond);
+	return (i + 1) % UCI_MSG_QUEUE_MAX;
 }
 
 int producer_thread(void * arg) {
@@ -204,20 +120,22 @@ int uci_server_shutdown(UciServer * server) {
 	return status;
 }
 
+static void free_msg_from_serv(void * msg) {
+	SDL_Log("Unread message from server : %s\n", (char *)msg);
+	SDL_free(msg);
+}
+
+static void free_msg_to_serv(void * msg) {
+	SDL_Log("Unread message to server : %s\n", (char *)msg);
+	SDL_free(msg);
+}
+
 int uci_server_close(UciServer * server) {
 	int status = uci_server_shutdown(server);
 	SDL_WaitThread(server->consumer, NULL);
 	SDL_WaitThread(server->producer, NULL);
-	for (u8 i = server->input.head; i != server->input.tail; i = next(i)) {
-		SDL_Log("Unread message from server : %s\n", (char *)server->input.buf[i]);
-		SDL_free(server->input.buf[i]);
-	}
-	for (u8 i = server->output.head; i != server->output.tail; i = next(i)) {
-		SDL_Log("Unread message to server : %s\n", (char *)server->output.buf[i]);
-		SDL_free(server->output.buf[i]);
-	}
-	msg_queue_destroy(&server->input);
-	msg_queue_destroy(&server->output);
+	msg_queue_destroy(&server->input, free_msg_from_serv);
+	msg_queue_destroy(&server->output, free_msg_to_serv);
 	return status;
 }
 

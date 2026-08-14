@@ -25,6 +25,7 @@ typedef enum {
 	STATE_STAGE_GAME_SETTINGS = 4,
 	STATE_STAGE_GAME = 8,
 	STATE_STAGE_ERR_MSG = 16,
+	STATE_STAGE_PAUSED = 32,
 } StateStage;
 
 typedef struct {

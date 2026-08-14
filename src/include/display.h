@@ -1,4 +1,3 @@
-#include "ints.h"
 #include <SDL3/SDL.h>
 
 #define SCREEN_WIDTH 360
@@ -10,10 +9,10 @@ typedef SDL_Color Color;
 typedef struct {
 	Renderer * renderer;
 	Window * window;
-	f32 scale;
 } Display;
 
 bool display_open(Display * display);
+void display_clear(Display * display);
 void display_flip(Display * display);
 void display_close(Display * display);
 

@@ -5,57 +5,59 @@
 const char * texture_id_to_asset_path(TextureId id) {
 	switch (id) {
 		case TEXTURE_ID_BOARD:
-			return "assets/board.png";
+			return "board.png";
 		case TEXTURE_ID_HOVER_SHADOW:
-			return "assets/hover_shadow.png";
+			return "hover_shadow.png";
 		case TEXTURE_ID_PROMOTION_DIALOG_BOX:
-			return "assets/promotion_dialog_box.png";
+			return "promotion_dialog_box.png";
 		case TEXTURE_ID_LETTERS:
-			return "assets/letters.png";
+			return "letters.png";
 		case TEXTURE_ID_RIGHT_BORDER:
-			return "assets/right_border.png";
+			return "right_border.png";
 		case TEXTURE_ID_LEFT_BORDER:
-			return "assets/left_border.png";
+			return "left_border.png";
 		case TEXTURE_ID_TOP_BORDER:
-			return "assets/top_border.png";
+			return "top_border.png";
 		case TEXTURE_ID_BOTTOM_BORDER:
-			return "assets/bottom_border.png";
+			return "bottom_border.png";
 		case TEXTURE_ID_TOP_RIGHT_BORDER:
-			return "assets/top_right_border.png";
+			return "top_right_border.png";
 		case TEXTURE_ID_TOP_LEFT_BORDER:
-			return "assets/top_left_border.png";
+			return "top_left_border.png";
 		case TEXTURE_ID_BOTTOM_RIGHT_BORDER:
-			return "assets/bottom_right_border.png";
+			return "bottom_right_border.png";
 		case TEXTURE_ID_BOTTOM_LEFT_BORDER:
-			return "assets/bottom_left_border.png";
+			return "bottom_left_border.png";
 		case TEXTURE_ID_SLIDER:
-			return "assets/slider.png";
+			return "slider.png";
 		case TEXTURE_ID_HUMAN_BOT_SLIDER:
-			return "assets/human_bot_slider.png";
+			return "human_bot_slider.png";
+		case TEXTURE_ID_PAUSE:
+			return "pause.png";
 		case TEXTURE_ID_WHITE_PAWN:
-			return "assets/white_pawn.png";
+			return "white_pawn.png";
 		case TEXTURE_ID_WHITE_KNIGHT:
-			return "assets/white_knight.png";
+			return "white_knight.png";
 		case TEXTURE_ID_WHITE_BISHOP:
-			return "assets/white_bishop.png";
+			return "white_bishop.png";
 		case TEXTURE_ID_WHITE_ROOK:
-			return "assets/white_rook.png";
+			return "white_rook.png";
 		case TEXTURE_ID_WHITE_QUEEN:
-			return "assets/white_queen.png";
+			return "white_queen.png";
 		case TEXTURE_ID_WHITE_KING:
-			return "assets/white_king.png";
+			return "white_king.png";
 		case TEXTURE_ID_BLACK_PAWN:
-			return "assets/black_pawn.png";
+			return "black_pawn.png";
 		case TEXTURE_ID_BLACK_KNIGHT:
-			return "assets/black_knight.png";
+			return "black_knight.png";
 		case TEXTURE_ID_BLACK_BISHOP:
-			return "assets/black_bishop.png";
+			return "black_bishop.png";
 		case TEXTURE_ID_BLACK_ROOK:
-			return "assets/black_rook.png";
+			return "black_rook.png";
 		case TEXTURE_ID_BLACK_QUEEN:
-			return "assets/black_queen.png";
+			return "black_queen.png";
 		case TEXTURE_ID_BLACK_KING:
-			return "assets/black_king.png";
+			return "black_king.png";
 	}
 }
 
@@ -83,25 +85,24 @@ static void surface_unlock_rw(SDL_Surface * sf) {
 }
 
 bool texture_cache_init(TextureCache * cache, Renderer * renderer) {
-	const char * base = SDL_GetBasePath();
 	int i;
 	StrBuilder builder = str_builder_new();
 	for (i = 0; i < TEXTURE_ID_COUNT; ++i) {
 		const char * rel_path = texture_id_to_asset_path((TextureId)i);
-		Str base_str = str_from_cstr(base);
 		Str rel_path_str = str_from_cstr(rel_path);
-		bool ok = str_builder_ensure_capacity(&builder, base_str.size + 4 + rel_path_str.size + 1);
-		ok = ok && str_builder_append_str(&builder, str_from_cstr(base));
-		ok = ok && str_builder_append_str(&builder, S("/../"));
+		bool ok = true;
+#ifndef __ANDROID__
+		ok = ok && str_builder_append_str(&builder, S("assets/"));
+#endif
 		ok = ok && str_builder_append_str(&builder, str_from_cstr(rel_path));
 		if (!ok) {
-			SDL_Log("Couldn't allocate memory for path '%s/%s'", base, rel_path);
+			SDL_Log("Couldn't allocate memory for path 'assets/%s'", rel_path);
 			goto error;
 		}
 		SDL_Surface * sf = IMG_Load(builder.data);
 		str_builder_clear(&builder);
 		if (!sf) {
-			SDL_Log("Couldn't load image at [%s/%s]", base, rel_path);
+			SDL_Log("Couldn't load image at [assets/%s]", rel_path);
 			goto error;
 		}
 		if (i == TEXTURE_ID_LETTERS) {

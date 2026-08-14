@@ -1,24 +1,25 @@
 #include "src/include/texture.h"
 #include "src/include/state.h"
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
-int main(int argc, char ** argv) {
-	(void)argc;
-	(void)argv;
+
+int entry(void) {
 	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
-		SDL_Log("%s", SDL_GetError());
+		SDL_Log("Init Error: %s", SDL_GetError());
 		return 1;
 	}
 	SDL_Log("Initialized SDL subsystems");
 	Display display;
 	if (!display_open(&display)) {
-		SDL_Log("%s", SDL_GetError());
+		SDL_Log("Display Error: %s", SDL_GetError());
 		SDL_Quit();
 		return 1;
 	}
 	SDL_Log("Opened display window");
 	TextureCache cache;
 	if (!texture_cache_init(&cache, display.renderer)) {
-		SDL_Log("%s", SDL_GetError());
+		SDL_Log("Texture Cache Error: %s", SDL_GetError());
 		display_close(&display);
 		SDL_Quit();
 		return 1;
@@ -39,8 +40,13 @@ int main(int argc, char ** argv) {
 				break;
 			case SDL_EVENT_MOUSE_MOTION:
 				event.type = MOUSE_MOVE_EVENT;
-				event.as.mouse_move.x = _event.motion.x / display.scale;
-				event.as.mouse_move.y = _event.motion.y / display.scale;
+				if (!SDL_ConvertEventToRenderCoordinates(display.renderer, &_event)) {
+					SDL_Log("%s", SDL_GetError());
+					running = false;
+					continue;
+				}
+				event.as.mouse_move.x = _event.motion.x;
+				event.as.mouse_move.y = _event.motion.y;
 				break;
 			case SDL_EVENT_MOUSE_BUTTON_DOWN:
 				event.type = MOUSE_DOWN_EVENT;
@@ -75,4 +81,10 @@ int main(int argc, char ** argv) {
 	SDL_Quit();
 	SDL_Log("Closed SDL Subsystems");
 	return 0;
+}
+
+int main(int argc, char ** argv) {
+	int result = entry();
+	SDL_Log("App finished with code %d", result);
+	return result;
 }

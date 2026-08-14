@@ -1,5 +1,6 @@
 #include "include/state.h"
 #include "include/str.h"
+#include "include/texture.h"
 
 #define SLOT_HEIGHT (SCREEN_WIDTH / 12.0)
 #define SLOT_WIDTH (SCREEN_WIDTH * 0.5)
@@ -11,6 +12,17 @@
 #define BACK_BUTTON_SLOT 7
 #define QUIT_BUTTON_SLOT 8
 #define START_BUTTON_SLOT 10
+
+#define PAUSED_BACK_BUTTON_SLOT 6
+#define PAUSED_EXIT_BUTTON_SLOT 7
+
+#define PAUSE_BUTTON_RECT \
+	((Rect2f){ \
+	 	SCREEN_WIDTH - 32, \
+		0, \
+		32, \
+		32 \
+	 })
 
 #define MENU_RECT \
 	((Rect2f){SCREEN_WIDTH * 0.25, SCREEN_WIDTH * 0.25, SCREEN_WIDTH * 0.5, \
@@ -112,13 +124,23 @@ void state_process_event(State * state, const Event * event) {
 	}
 }
 
+#define STATE_MAIN_MENU \
+		(STATE_STAGE_TITLE | \
+		STATE_STAGE_ABOUT | \
+		STATE_STAGE_GAME_SETTINGS | \
+		STATE_STAGE_ERR_MSG)
+
+
+#define STATE_MENU \
+	(STATE_MAIN_MENU | \
+	 STATE_STAGE_PAUSED)
+
+static bool state_is_main_menu(State * state) {
+	return (state->stage & STATE_MAIN_MENU) != 0;
+}
+
 static bool state_is_menu(State * state) {
-	const u32 bitmask =
-		STATE_STAGE_TITLE |
-		STATE_STAGE_ABOUT |
-		STATE_STAGE_GAME_SETTINGS |
-		STATE_STAGE_ERR_MSG;
-	return (state->stage & bitmask) != 0;
+	return (state->stage & STATE_MENU) != 0;
 }
 
 static void state_stage_cleanup(State * state) {
@@ -131,6 +153,7 @@ static void state_stage_cleanup(State * state) {
 		case STATE_STAGE_ABOUT:
 		case STATE_STAGE_GAME_SETTINGS:
 		case STATE_STAGE_ERR_MSG:
+		case STATE_STAGE_PAUSED:
 			break;
 	}
 }
@@ -262,7 +285,7 @@ void state_game_make_move(State * state, u8 from, u8 to) {
 }
 
 static StateUpdateResult state_process_mouse_press(State * state, f32 elapsed_time) {
-	if (state_is_menu(state)) {
+	if (state_is_main_menu(state)) {
 		if (mouse_in_rect(state, get_slot_rect(QUIT_BUTTON_SLOT))) {
 			return STATE_UPDATE_QUIT;
 		}
@@ -311,7 +334,24 @@ static StateUpdateResult state_process_mouse_press(State * state, f32 elapsed_ti
 			state_start_game(state);
 		}
 		break;
+	case STATE_STAGE_PAUSED:
+		if (mouse_in_rect(state, PAUSE_BUTTON_RECT)) {
+			state->stage = STATE_STAGE_GAME;
+		}
+		if (mouse_in_rect(state, get_slot_rect(PAUSED_BACK_BUTTON_SLOT))) {
+			state->stage = STATE_STAGE_GAME;
+		}
+		if (mouse_in_rect(state, get_slot_rect(PAUSED_EXIT_BUTTON_SLOT))) {
+			state->stage = STATE_STAGE_GAME;
+			state_stage_cleanup(state);
+			state->stage = STATE_STAGE_TITLE;
+		}
+		break;
 	case STATE_STAGE_GAME: {
+		if (mouse_in_rect(state, PAUSE_BUTTON_RECT)) {
+			state->stage = STATE_STAGE_PAUSED;
+			return STATE_UPDATE_CONTINUE;
+		}
 		if (state->game.promotion_dialog) {
 			ChessPiece piece;
 			if (mouse_in_rect(state, DIALOG_KNIGHT_RECT)) {
@@ -510,7 +550,7 @@ StateUpdateResult state_update(State * state, f32 elapsed_time, f32 delta_time) 
 		state_stage_cleanup(state);
 		return STATE_UPDATE_QUIT;
 	}
-	if (state_is_menu(state)) {
+	if (state_is_main_menu(state)) {
 		f32 accel = (state->bg_direction == 0 ? -1 : 1) * 150;
 		state->bg_speed = clampf(state->bg_speed + accel * delta_time, -50, 50);
 		state->bg_rect.x += state->bg_speed * delta_time;
@@ -740,12 +780,16 @@ void draw_text(Str text, Display * display, TextureCache * cache, Rect2f rect) {
 }
 
 void draw_menu_template(State * state, TextureCache * cache, Display * display) {
-	Texture * bgtx = texture_cache_lookup(cache, TEXTURE_ID_BOARD);
-	SDL_SetTextureScaleMode(bgtx, SDL_SCALEMODE_LINEAR);
-	SDL_RenderTextureTiled(display->renderer, bgtx, &state->bg_rect, state->bg_scale, NULL);
-	SDL_SetTextureScaleMode(bgtx, SDL_SCALEMODE_NEAREST);
+	bool main_menu = state_is_main_menu(state);
+	if (main_menu) {
+		Texture * bgtx = texture_cache_lookup(cache, TEXTURE_ID_BOARD);
+		SDL_SetTextureScaleMode(bgtx, SDL_SCALEMODE_LINEAR);
+		SDL_RenderTextureTiled(display->renderer, bgtx, &state->bg_rect, state->bg_scale, NULL);
+		SDL_SetTextureScaleMode(bgtx, SDL_SCALEMODE_NEAREST);
+	}
 	draw_menu_bg(display, cache, MENU_RECT);
-	draw_text(S("QUIT"), display, cache, get_slot_rect(QUIT_BUTTON_SLOT));
+	if (main_menu)
+		draw_text(S("QUIT"), display, cache, get_slot_rect(QUIT_BUTTON_SLOT));
 }
 
 void state_draw_game_settings(State * state, TextureCache * cache, Display * display) {
@@ -755,18 +799,20 @@ void state_draw_game_settings(State * state, TextureCache * cache, Display * dis
 	a = get_slot_rect(MENU_TITLE_SLOT + 1);
 	partition_rect_horiz(a, 0.5, &b, &c);
 	draw_text(S("P1"), display, cache, b);
+	Texture * human_bot_atlas = texture_cache_lookup(cache, TEXTURE_ID_HUMAN_BOT_SLIDER);
 	slider_draw(&state->p1_slider, display,
-		c, texture_cache_lookup(cache, TEXTURE_ID_HUMAN_BOT_SLIDER));
+		c, human_bot_atlas);
 	a = get_slot_rect(MENU_TITLE_SLOT + 2);
 	partition_rect_horiz(a, 0.5, &b, &c);
 	draw_text(S("P2"), display, cache, b);
 	slider_draw(&state->p2_slider, display,
-		c, texture_cache_lookup(cache, TEXTURE_ID_HUMAN_BOT_SLIDER));
+		c, human_bot_atlas);
 	a = get_slot_rect(MENU_TITLE_SLOT + 3);
 	partition_rect_horiz(a, 0.5, &b, &c);
 	draw_text(S("Rotate?"), display, cache, b);
+	Texture * slider_atlas = texture_cache_lookup(cache, TEXTURE_ID_SLIDER);
 	slider_draw(&state->board_rotate_slider, display,
-		c, texture_cache_lookup(cache, TEXTURE_ID_SLIDER));
+		c, slider_atlas);
 	draw_text(S("BACK"), display, cache, get_slot_rect(BACK_BUTTON_SLOT));
 	draw_menu_bg(display, cache, get_slot_rect(START_BUTTON_SLOT));
 	draw_text(S("START"), display, cache, get_slot_rect(START_BUTTON_SLOT));
@@ -881,10 +927,12 @@ void state_draw_game(State * state, TextureCache * cache, Display * display) {
 		SDL_RenderTexture(display->renderer, r, NULL, &DIALOG_ROOK_RECT);
 		SDL_RenderTexture(display->renderer, q, NULL, &DIALOG_QUEEN_RECT);
 	}
+	Texture * pause = texture_cache_lookup(cache, TEXTURE_ID_PAUSE);
+	SDL_RenderTexture(display->renderer, pause, NULL, &PAUSE_BUTTON_RECT);
 }
 
 void state_draw(State * state, TextureCache * cache, Display * display) {
-	if (state_is_menu(state)) {
+	if (state_is_main_menu(state)) {
 		draw_menu_template(state, cache, display);
 	}
 	switch (state->stage) {
@@ -902,6 +950,13 @@ void state_draw(State * state, TextureCache * cache, Display * display) {
 			state_draw_game_settings(state, cache, display);
 			break;
 		}
+		case STATE_STAGE_PAUSED:
+			state_draw_game(state, cache, display);
+			draw_menu_template(state, cache, display);
+			draw_text(S("PAUSED"), display, cache, get_slot_rect(MENU_TITLE_SLOT));
+			draw_text(S("BACK"), display, cache, get_slot_rect(PAUSED_BACK_BUTTON_SLOT));
+			draw_text(S("EXIT"), display, cache, get_slot_rect(PAUSED_EXIT_BUTTON_SLOT));
+			break;
 		case STATE_STAGE_GAME: {
 			state_draw_game(state, cache, display);
 			break;
